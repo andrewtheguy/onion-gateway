@@ -1,16 +1,15 @@
-# One backend for the onion gateway's directory endpoints, in Rust. The
-# gateway's service worker asks its root host for a fresh Tor directory seed
-# (see gateway/README.md, "The directory endpoints"); this
-# builds one from a directory authority, keeps it fresh in the background, and
-# serves it. Any server that answers the same two URLs does as well — this is
-# the example, not the only shape.
+# The reference directory server: builds a Tor directory seed from a directory
+# authority, keeps it fresh in the background, and serves it over the two
+# plain-HTTP URLs a browser Tor client such as the onion gateway asks for.
+# README.md documents those URLs; any server that answers them the same way
+# is a directory server too, and this is the shape to copy.
 [package]
 name = "webtor-directory-server"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
+version = "0.0.2"
+edition = "2021"
+license = "MIT"
 publish = false
-description = "Backend that builds and serves fresh Tor directory seeds for the onion gateway"
+description = "Builds and serves fresh Tor directory seeds for browser Tor clients"
 
 [[bin]]
 name = "webtor-directory-server"

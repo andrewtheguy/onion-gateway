@@ -8,8 +8,8 @@ const SERVICE_WORKER_SOURCE = '/src/sw.ts';
 
 /**
  * Where the directory backend is listening, so `/api` on the dev server
- * reaches it from every onion origin. 5180 is `webtor-directory-server`'s
- * default; a port or a full origin overrides it:
+ * reaches it from every onion origin. 5180 is where a directory backend is
+ * expected by default; a port or a full origin overrides it:
  *
  *   GATEWAY_DEV_BACKEND=5181 bun run dev
  *   GATEWAY_DEV_BACKEND=http://192.168.1.10:5180 bun run dev

@@ -41,30 +41,23 @@ subdomain form.
 The first visit to an onion installs the worker on that origin and shows a
 page that follows the Tor bootstrap; the page you asked for loads on its own
 once the client is up. Bootstrapping needs a Tor directory, and downloading one
-over a single Snowflake circuit takes minutes, so run the directory backend in
-a second terminal:
-
-```bash
-bun run backend        # cargo run -p webtor-directory-server -- serve
-```
-
-It builds a seed from a directory authority in under a minute, rebuilds it as
-each hourly consensus is published, and serves it on `127.0.0.1:5180`; the
-dev server proxies `/api` there, so the worker on every onion origin finds it
-at `http://intor.localhost:5173/api/directory`. `GATEWAY_DEV_BACKEND` names
-another port or origin. `bun run backend:ts` is the TypeScript backend in
-`../directory-server-ts` on the same port instead: it refreshes nothing
-itself, so run its `bun run tor:directory` first and again within three hours.
-Seeded, a client bootstraps in a few seconds and the first page arrives after
+over a single Snowflake circuit takes minutes, so run a directory backend
+beside it: any server that answers [the directory endpoints](#the-directory-endpoints)
+on `127.0.0.1:5180`, where the dev server proxies `/api`, or on the port or
+origin `GATEWAY_DEV_BACKEND` names. The worker on every onion origin then
+finds it at `http://intor.localhost:5173/api/directory`. The reference
+implementation is [`directory-server`](../directory-server) in this
+repository; its README says how to run it, and it serves a seed within a
+minute of starting. Seeded, a client bootstraps in a few seconds and the first page arrives after
 one rendezvous, about ten seconds in; later requests to the same onion begin
 on the circuit the first one built and take about a second each. Without a
 backend the worker says so and downloads the directory over Tor instead.
 
-`bun run build` produces a static `dist/` with the worker at `/sw.js`. The
-backend serves it too — `webtor-directory-server serve --web-root dist` is
-the whole deployment — or any server that falls back to `index.html` for
-unknown paths hosts it, with the directory endpoints behind `/api/directory`
-on the same host or wherever `VITE_DIRECTORY_URL` points. As in the
+`bun run build` produces a static `dist/` with the worker at `/sw.js`. Any
+server that falls back to `index.html` for unknown paths hosts it, with the
+directory endpoints behind `/api/directory` on the same host or wherever
+`VITE_DIRECTORY_URL` points; the directory servers in this repository can
+serve the `dist/` themselves with `--web-root`. As in the
 `webtor-rs` examples, `VITE_BRIDGE_URL` and `VITE_BRIDGE_FINGERPRINT` in
 `.env.local` point the client at a bridge of your own, such as the
 `scripts/local-bridge` container in `webtor-rs`.
@@ -78,9 +71,9 @@ service: the
 install, the bootstrap page, the site's first page, a reload that carries the
 cookie it set, a form sign-in answered with a `303` and a session cookie, a
 script's `fetch` whose `Origin`, `Referer` and `Cookie` arrive in the onion's
-terms, and a sign-out. It starts the directory backend and Vite on ports of
-their own — `DIRECTORY_BACKEND` names a backend already running instead — and
-reads `SAMPLE_ONION` from the environment, plus `BRIDGE_URL` and
+terms, and a sign-out. It starts Vite on a port of its own, expects a
+directory backend serving a seed on `127.0.0.1:5180` or wherever
+`DIRECTORY_BACKEND` points, and reads `SAMPLE_ONION` from the environment, plus `BRIDGE_URL` and
 `BRIDGE_FINGERPRINT` for a bridge of your own, which it hands to the worker
 as the `VITE_` variables:
 
@@ -88,7 +81,7 @@ as the `VITE_` variables:
 cd /path/to/webtor-rs                            # the sample onion and the bridge live there
 scripts/local-onion/onion.sh start && eval "$(scripts/local-onion/onion.sh env)"
 scripts/local-bridge/bridge.sh start && eval "$(scripts/local-bridge/bridge.sh env)"
-cd /path/to/onion-gateway/gateway && bun run test:e2e
+cd /path/to/onion-gateway/gateway && bun run test:e2e   # with a directory backend running
 ```
 
 `CHROME_PATH` names the browser, as for the suites under `webtor-rs/tests`.
@@ -141,8 +134,8 @@ GET /api/directory/<name>.json
 - **The manifest** names the current seed and its lifetime. It is answered
   with `Cache-Control: no-cache`, since it is the one thing that changes, and
   `url` may be relative to it or absolute — a CDN, say.
-- **The seed** is what `webtor-directory-server snapshot` writes, or what a
-  client's `directoryCache()` returns: a microdesc consensus, the authority
+- **The seed** is what a client's `directoryCache()` returns, or what a
+  directory server assembles from the same documents: a microdesc consensus, the authority
   certificates that check it and its microdescriptors, in one JSON document
   the client revalidates against the pinned directory authorities before it
   installs any of it. Its name is unique to its bytes, so the response is
@@ -151,18 +144,16 @@ GET /api/directory/<name>.json
 - **CORS.** Both answer with `Access-Control-Allow-Origin: *`. The worker
   asking is on an onion's origin, not the gateway's.
 - **Freshness** is the backend's job. A consensus is published every hour and
-  valid for three; the example backend refreshes a few minutes after each
+  valid for three; the reference server refreshes a few minutes after each
   `freshUntil` and keeps the previous seed served for a worker that read the
   manifest just before. A stale seed is not fatal to the client, which keeps
   the microdescriptors it can still use and downloads only the consensus.
 
-`../directory-server` is one backend: a Rust binary that fetches the
-documents from a directory authority over plain HTTP, checks them with the
-same Arti document crates the client is built on, and serves them as above,
-refreshing on its own. `../directory-server-ts` is another, in TypeScript on Bun, with
-no refresh loop: `bun run tor:directory` writes a seed and its manifest to a
-directory on disk, and `bun run serve` answers from whatever is there. The
-gateway does not depend on either being the one.
+[`directory-server`](../directory-server) is the reference implementation of
+this contract and [`directory-server-ts`](../directory-server-ts) is a
+minimal sample answering it from another language, without the reference
+server's refresh loop or verification; the gateway depends on neither being
+the one.
 
 ## What the gateway does and does not forward
 

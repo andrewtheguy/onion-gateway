@@ -8,7 +8,7 @@
 //!
 //! That is the shape the WASM client's `directorySeed` accepts, and this
 //! module is the whole contract with it: the version, the field order (the
-//! gateway recognises a seed by its first bytes), and the checks a seed has
+//! client recognises a seed by its first bytes), and the checks a seed has
 //! to pass. The client trusts none of this; it revalidates the consensus
 //! against its own pinned directory authorities before installing a relay.
 //! What is checked here, with the same Arti document crates the client is
@@ -249,7 +249,7 @@ impl VerifiedConsensus {
     }
 }
 
-/// The seed as the client reads it. Field order matters: the gateway
+/// The seed as the client reads it. Field order matters: the client
 /// recognises a seed by its opening `{"version":`.
 #[derive(Serialize)]
 struct Seed<'a> {

@@ -1,10 +1,11 @@
-//! The endpoints the gateway reads, and the task that keeps them fresh.
+//! The endpoints a client reads, and the task that keeps them fresh.
 //!
 //! `GET /api/directory` is a small manifest naming the current seed's URL and
 //! lifetime; `GET /api/directory/<name>.json` is the seed. The name is unique
 //! to the bytes, so the second answer is immutable and a browser keeps it for
-//! as long as the consensus is valid — one copy for every onion origin under
-//! the gateway, since they all ask the same URL on the same host. The previous
+//! as long as the consensus is valid — one copy for every onion origin a
+//! browser runs a client on, since they all ask the same URL on the same host.
+//! The previous
 //! seed stays available for a while, so a worker that read the manifest a
 //! moment before a refresh still finds what it was told about.
 
@@ -69,10 +70,10 @@ impl Directory {
 pub type Shared = Arc<RwLock<Directory>>;
 
 /// The router: the two directory endpoints and a health check under `/api`,
-/// and, when `web_root` is given, the gateway's built `dist/` behind them,
-/// with `index.html` for any other path so the app answers on every origin.
+/// and, when `web_root` is given, a built site behind them, with `index.html`
+/// for any other path so a single-page app answers on every origin.
 pub fn router(directory: Shared, web_root: Option<PathBuf>) -> Router {
-    // Every onion origin under the gateway asks these across origins, and
+    // The client asks these from an onion's origin, not this host's, and
     // the answer is the same public document for all of them.
     let cors = CorsLayer::new()
         .allow_origin(Any)

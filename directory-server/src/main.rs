@@ -1,7 +1,8 @@
-//! A backend for the onion gateway's directory endpoints, and a one-off
-//! snapshot writer for test suites and other projects that want one seed.
+//! The reference directory server: the two directory endpoints a browser Tor
+//! client asks for its seed from, and a one-off snapshot writer for test
+//! suites and other projects that want one seed.
 //!
-//!   webtor-directory-server serve --listen 127.0.0.1:5180 [--web-root gateway/dist]
+//!   webtor-directory-server serve --listen 127.0.0.1:5180 [--web-root dist]
 //!   webtor-directory-server snapshot directory-seed.json
 
 mod fetch;
@@ -30,12 +31,12 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Serve `/api/directory`, refreshing the seed as each consensus is
-    /// published, and optionally the gateway's built `dist/` in front of it.
+    /// published, and optionally a built site in front of it.
     Serve {
         #[arg(short, long, env = "WEBTOR_DIRECTORY_LISTEN", default_value = "127.0.0.1:5180")]
         listen: SocketAddr,
-        /// A built onion gateway to serve from `/`, with `index.html` for any
-        /// path that is not a file.
+        /// A built single-page site to serve from `/`, with `index.html` for
+        /// any path that is not a file.
         #[arg(long, env = "WEBTOR_DIRECTORY_WEB_ROOT", value_name = "DIR")]
         web_root: Option<PathBuf>,
     },
@@ -61,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
             if let Some(root) = &web_root {
                 anyhow::ensure!(
                     root.join("index.html").is_file(),
-                    "{} has no index.html; build the gateway first (`bun run build` in gateway/)",
+                    "{} has no index.html to serve",
                     root.display()
                 );
             }

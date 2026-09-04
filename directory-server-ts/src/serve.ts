@@ -2,7 +2,7 @@
 // Serve the directory endpoints from the store `bun run tor:directory` writes.
 //
 //   bun run serve                                  # 127.0.0.1:5180, ./directory
-//   bun run serve --listen 0.0.0.0:8080 --web-root ../gateway/dist
+//   bun run serve --listen 0.0.0.0:8080 --web-root dist
 //
 // Nothing here refreshes the directory: run `bun run tor:directory` again
 // before the current one expires, and the next request picks it up.

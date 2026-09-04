@@ -1,11 +1,15 @@
 # directory-server-ts
 
-The onion gateway's directory endpoints, from TypeScript on Bun, with the
-seed built by hand. It answers the same contract as
-[`directory-server`](../directory-server) — the two URLs the gateway's
-README documents under *The directory endpoints* — but has no refresh loop:
-a script builds the seed when you run it, and the server reads whatever the
-script last wrote.
+A sample directory server, in TypeScript on Bun, to show that the contract is
+small enough to answer from any language. [`directory-server`](../directory-server)
+is the reference implementation and its README documents the two URLs; this
+one answers them the same way and stops there. What the reference server does
+beyond the contract — rebuilding on its own as each consensus is published,
+and checking every signature with the same Tor document library the client
+is built on — is deliberately not here: a script builds the seed when you run
+it, checks only that the documents have the right shape, and the server reads
+whatever the script last wrote. Start from the reference server for a
+deployment; start from this one to see the minimum a backend must answer.
 
 ```bash
 cd directory-server-ts
@@ -14,10 +18,8 @@ bun run tor:directory    # builds ./directory/<name>.json and manifest.json, abo
 bun run serve            # answers on 127.0.0.1:5180
 ```
 
-With `serve` running, `bun run dev` in [`gateway`](../gateway) proxies `/api`
-to it, and the worker on every onion origin fetches
-`http://intor.localhost:5173/api/directory`. `bun run backend:ts` in the
-gateway is the same `serve`.
+A client that expects the directory endpoints on `127.0.0.1:5180` finds them
+there, and nothing about it changes with the implementation behind the port.
 
 ## What the script writes
 
@@ -25,10 +27,13 @@ gateway is the same `serve`.
 directory authority over plain HTTP, the authority certificates that check its
 signatures and the microdescriptor of every relay it names, and puts them in
 the JSON `directorySeed` accepts. It checks that the result could be installed
-— a strict majority of signatures from the authorities the client pins, enough
-relays in each role, most microdescriptors present — but verifies no
-signature itself; the client does that against its pinned authorities before
-installing a single relay, so a seed needs no trust between here and there.
+— a strict majority of signatures from the authorities the client pins, a
+certificate for each of them, enough relays in each role, most
+microdescriptors present and matching their digests — but verifies no
+signature itself, which would mean a Tor document library the way the
+reference server has one. The client does that against its pinned authorities
+before installing a single relay, so a seed needs no trust between here and
+there; what the sample cannot catch is a seed the client will then reject.
 
 The result goes into `./directory` (`--store` or `WEBTOR_DIRECTORY_STORE` for
 another place):
@@ -52,9 +57,7 @@ Once the stored seed has expired the manifest answers `503` saying so, and the
 worker downloads a directory over Tor instead.
 
 `bun src/build.ts --seed <path>` writes the bare seed to one file instead,
-which is what `bun run tor:directory` in the `webtor-rs` examples
-(`nostr-onion-poc` and `onion-service-poc`) uses for their
-`public/tor-directory.json`.
+for a project that ships one with its static files.
 
 ## What the server answers
 
@@ -67,12 +70,12 @@ GET /api/health
 Every `/api` answer carries `Access-Control-Allow-Origin: *`, because the
 worker asking lives on an onion's origin. `--listen host:port` (or
 `WEBTOR_DIRECTORY_LISTEN`) moves it off `127.0.0.1:5180`, and
-`--web-root <dir>` (or `WEBTOR_DIRECTORY_WEB_ROOT`) serves a built gateway
-beside the endpoints, falling back to its `index.html` for the paths the
-gateway's own router handles:
+`--web-root <dir>` (or `WEBTOR_DIRECTORY_WEB_ROOT`) serves a built site beside
+the endpoints, falling back to its `index.html` for the paths the site routes
+itself:
 
 ```bash
-bun run serve --listen 0.0.0.0:8080 --web-root ../gateway/dist
+bun run serve --listen 0.0.0.0:8080 --web-root dist
 ```
 
 `bun run test` covers the consensus reading, the store and the endpoints

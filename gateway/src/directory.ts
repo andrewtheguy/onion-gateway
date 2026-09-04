@@ -5,8 +5,8 @@
 // forty megabytes per site visited. Instead every worker under the gateway
 // asks the same two URLs on the gateway's own host, and the browser's HTTP
 // cache — which is per site, not per origin — holds the one answer for all
-// of them. The backend is whatever answers those URLs; `webtor-directory-server`
-// in ../directory-server is one, and the contract is in the README.
+// of them. The backend is whatever answers those URLs the way the README
+// describes under "The directory endpoints".
 //
 //   GET <manifest URL>          {"url", "validAfter", "freshUntil", "validUntil", "bytes", "relays"}
 //   GET <manifest.url>          the seed, as `directorySeed` takes it; immutable, uniquely named

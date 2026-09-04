@@ -7,7 +7,7 @@
 // Both directory answers carry `Access-Control-Allow-Origin: *`: the worker
 // asking is on an onion's origin, not this host's. With a web root the rest
 // of the site is served too, falling back to `index.html` for the paths the
-// gateway's own router handles.
+// site's own router handles.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';

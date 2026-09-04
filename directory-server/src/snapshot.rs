@@ -1,5 +1,5 @@
 //! A built seed as the server holds it: named, hashed, compressed once, and
-//! described by the manifest the gateway reads first.
+//! described by the manifest the client reads first.
 
 use bytes::Bytes;
 use serde::Serialize;
@@ -22,7 +22,7 @@ pub struct Snapshot {
     pub valid_until: SystemTime,
 }
 
-/// What the gateway reads before it fetches a seed: where the current one is
+/// What the client reads before it fetches a seed: where the current one is
 /// and how long it is good for.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

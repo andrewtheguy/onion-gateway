@@ -14,10 +14,13 @@
 //   BRIDGE_URL          a bridge instead of the public one, with
 //   BRIDGE_FINGERPRINT  its identity; both or neither. Without one the worker
 //                       bootstraps across the public Snowflake bridge.
-//   DIRECTORY_BACKEND   a running directory backend to proxy `/api` to, as a
-//                       port or an origin. Without one the test starts
-//                       `webtor-directory-server` itself, which builds a
-//                       seed from a directory authority in under a minute.
+//   DIRECTORY_BACKEND   the directory backend to proxy `/api` to, as a port
+//                       or an origin; 127.0.0.1:5180 without one. It must be
+//                       serving a seed already: the manifest answers 503
+//                       until a backend's first build lands, and the worker
+//                       would fall back to a Tor download if it asked in that
+//                       window — a path that also works, but not the one this
+//                       suite is here to drive.
 //   CHROME_PATH         Chrome-family binary (default /usr/bin/google-chrome)
 
 import assert from 'node:assert/strict';
@@ -32,7 +35,10 @@ const CHROME_PATH = process.env.CHROME_PATH ?? '/usr/bin/google-chrome';
 const SAMPLE_ONION = process.env.SAMPLE_ONION;
 const BRIDGE_URL = process.env.BRIDGE_URL;
 const BRIDGE_FINGERPRINT = process.env.BRIDGE_FINGERPRINT;
-const DIRECTORY_BACKEND = process.env.DIRECTORY_BACKEND;
+const DIRECTORY_BACKEND = process.env.DIRECTORY_BACKEND ?? '5180';
+const DIRECTORY_BACKEND_ORIGIN = /^\d+$/.test(DIRECTORY_BACKEND)
+  ? `http://127.0.0.1:${DIRECTORY_BACKEND}`
+  : DIRECTORY_BACKEND;
 /** Any name under `.localhost` does; the browser resolves them all to loopback. */
 const GATEWAY_HOST = 'intor.localhost';
 
@@ -93,22 +99,17 @@ async function waitForListening(child: ChildProcess, url: string, deadlineMs: nu
   }
 }
 
-/**
- * The Rust directory backend on a port of its own, built and run with
- * cargo, waited for until it serves a seed. The manifest says 503 until the
- * first build lands, and the worker would fall back to a Tor download if it
- * asked in that window — a path that also works, but not the one this suite
- * is here to drive.
- */
-async function startBackend(port: number): Promise<ChildProcess> {
-  const backend = spawn(
-    'cargo',
-    ['run', '-q', '-p', 'webtor-directory-server', '--', 'serve', '--listen', `127.0.0.1:${port}`],
-    { cwd: GATEWAY, stdio: ['ignore', 'pipe', 'pipe'] },
+/** Fail early, and say why, unless the directory backend is serving a seed. */
+async function checkBackend(): Promise<void> {
+  const url = `${DIRECTORY_BACKEND_ORIGIN}/api/directory`;
+  const status = await fetch(url)
+    .then((response) => String(response.status))
+    .catch((error: unknown) => (error instanceof Error ? error.message : String(error)));
+  assert.equal(
+    status,
+    '200',
+    `${url} answered ${status}. Start a directory backend there and let it build a seed, or set DIRECTORY_BACKEND.`,
   );
-  relayOutput(backend, 'backend');
-  await waitForListening(backend, `http://127.0.0.1:${port}/api/directory`, 5 * 60_000);
-  return backend;
 }
 
 /**
@@ -136,7 +137,6 @@ async function startVite(port: number, backend: string): Promise<ChildProcess> {
 describe('the onion gateway against a dynamic onion site', () => {
   let onion: string;
   let origin: string;
-  let backend: ChildProcess | undefined;
   let vite: ChildProcess | undefined;
   let browser: Browser | undefined;
   let page: Page;
@@ -168,14 +168,9 @@ describe('the onion gateway against a dynamic onion site', () => {
       'BRIDGE_URL and BRIDGE_FINGERPRINT are set together or not at all',
     );
 
-    let backendAt = DIRECTORY_BACKEND;
-    if (!backendAt) {
-      const backendPort = await freePort();
-      backend = await startBackend(backendPort);
-      backendAt = String(backendPort);
-    }
+    await checkBackend();
     const port = await freePort();
-    vite = await startVite(port, backendAt);
+    vite = await startVite(port, DIRECTORY_BACKEND);
     origin = `http://${onion}.${GATEWAY_HOST}:${port}`;
     say(`gateway at ${origin}`);
 
@@ -188,7 +183,6 @@ describe('the onion gateway against a dynamic onion site', () => {
   after(async () => {
     await browser?.close();
     vite?.kill();
-    backend?.kill();
   });
 
   it('installs the worker, bootstraps, and shows the onion page', async () => {
