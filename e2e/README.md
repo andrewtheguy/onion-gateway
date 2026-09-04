@@ -62,14 +62,11 @@ gateway origin, `http://<address>.onion.intor.localhost:<port>`:
    sign-in page open it, and it greets by name and echoes with the name on
    the front. Signing out closes it again.
 
-Phases 3 and 5 are skipped for now: the gateway does not yet carry a page's
-WebSockets to the onion, since a service worker never sees a `new
-WebSocket()`, and a socket opened to the gateway origin is left hanging by
-the dev server rather than answered. The cases are written and
-`WEBSOCKETS_IMPLEMENTED` at the top of `gateway.test.ts` turns them on; they
-are what a WebSocket path has to pass. The gated one also needs the Tor
-client's `connectWebSocket` to carry a `Cookie` on the upgrade, which the
-pinned `webtor-wasm` release does not take.
+The two WebSocket phases exercise the shim the gateway puts in every page
+it serves: `new WebSocket()` there is the replacement, and what the page
+sees came over a `MessageChannel` from the worker's socket on the onion. The
+gated one proves the upgrade carried the session cookie and that a `401` on
+the handshake reaches the page as a close rather than a hang.
 
 ## Environment
 

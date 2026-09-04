@@ -23,10 +23,8 @@ answers the same URLs, for the Tor directory it bootstraps from:
 - [`e2e`](e2e) — the gateway end to end: headless Chrome opens a sample
   onion site, published as an onion service from a container in that
   directory, through the gateway, and checks static content, dynamic
-  content and cookie auth, phase by phase. Two more phases, a WebSocket
-  and a sign-in for a cookie-gated one, are written but skipped until the
-  gateway carries WebSockets; a constant in the suite turns them on.
-  `e2e/run.sh` brings the whole rig up.
+  content, a WebSocket, cookie auth and a sign-in for a cookie-gated
+  WebSocket, phase by phase. `e2e/run.sh` brings the whole rig up.
 
 Each project directory is self-contained: its own manifest, lock file and
 tests, and nothing in one is imported by another; `e2e` is the one directory

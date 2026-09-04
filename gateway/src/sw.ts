@@ -4,7 +4,11 @@
 // client lives in the worker, bootstrapped over Snowflake from a directory
 // the gateway's backend serves (see directory.ts); no page on the origin
 // ever sees it, only the responses. The onion's cookies live here too, since
-// the browser keeps none for a response a worker made up.
+// the browser keeps none for a response a worker made up. A page's WebSockets
+// come through here as well: a worker never sees a WebSocket handshake, so
+// every HTML document goes out with a script that replaces the page's
+// `WebSocket` with one relaying to this worker (websocket-shim.js), and the
+// worker opens the socket over Tor and carries the messages both ways.
 //
 // Two things a service worker forbids shape this file. `import()` is not
 // allowed here, so the WASM package is imported statically and instantiated
@@ -17,13 +21,19 @@ import { cookieJar } from './cookies';
 import { directoryUrl, loadDirectory } from './directory';
 import { gatewayUrl, isOnionHost, parseGatewayHost } from './gateway-host';
 import { bootstrapPage, errorPage } from './gateway-pages';
+import { WEBSOCKET_SHIM_PATH, scriptNonce, shimTag, withShim } from './html-shim';
 import type {
+  GatewayKeepAlive,
   GatewayLevel,
   GatewayLine,
   GatewayPhase,
   GatewayProgress,
+  GatewaySocketOpen,
   GatewaySubscribe,
+  SocketToPage,
+  SocketToWorker,
 } from './protocol';
+import websocketShim from './websocket-shim.js?raw';
 
 declare const self: ServiceWorkerGlobalScope;
 
@@ -42,6 +52,13 @@ const MAX_RESPONSE_BYTES = 256 * 1024 * 1024;
  * in the client, so this is a bound on memory, not on what a site may accept.
  */
 const MAX_REQUEST_BYTES = 32 * 1024 * 1024;
+
+/**
+ * The most one WebSocket message may carry, either way. A browser's own
+ * sockets have no such limit; the client assembles a message whole before
+ * handing it over, and this bounds what one holds.
+ */
+const MAX_SOCKET_MESSAGE_BYTES = 16 * 1024 * 1024;
 
 /**
  * Request headers that are not carried to the onion as the page sent them.
@@ -136,6 +153,15 @@ const directoryManifestUrl =
 const cookies = cookieJar('webtor-onion-gateway-cookies', gateway?.onion ?? '');
 
 type TorClient = Awaited<ReturnType<typeof WebtorClient.create>>;
+
+/** What `connectWebSocket` resolves to; the package types it loosely. */
+interface OnionSocket {
+  readonly headers: Headers;
+  send(text: string): Promise<unknown>;
+  sendBinary(bytes: Uint8Array): Promise<unknown>;
+  receive(): Promise<{ type: 'text'; text: string } | { type: 'binary'; bytes: Uint8Array } | null>;
+  close(): Promise<unknown>;
+}
 
 // The bootstrap's state, kept in module scope: a browser stops an idle
 // service worker after roughly half a minute, and every restart begins here
@@ -248,6 +274,22 @@ function onionUrl(url: URL): string | null {
 }
 
 /**
+ * The onion WebSocket URL a page's socket URL stands for, or `null` when it
+ * is not this origin's onion — the same rule as `onionUrl`, for `ws:` and
+ * `wss:` on this origin and `ws:` on the onion itself. `wss:` to the origin
+ * is taken as it is: the page may be on `https:` and say the scheme it sees.
+ */
+function socketTarget(url: URL): string | null {
+  if (!gateway || url.hash !== '') return null;
+  const sameHost = (url.protocol === 'ws:' || url.protocol === 'wss:') && url.host === here.host;
+  const ownOnion =
+    url.protocol === 'ws:' &&
+    url.hostname === gateway.onion &&
+    (url.port === '' || url.port === '80');
+  return sameHost || ownOnion ? `ws://${gateway.onion}${url.pathname}${url.search}` : null;
+}
+
+/**
  * Where a redirect points, said in gateway terms. A `Location` on an onion
  * over plain HTTP — this one or another — becomes that onion's gateway
  * origin, so following it stays inside the gateway; anything else is passed
@@ -282,9 +324,16 @@ interface Upstream {
  * A compressed body is decompressed here too: the browser inflates only what
  * came off its own network stack, not what a worker hands it, and a
  * `Content-Encoding` left on a synthetic response would make the page
- * unreadable.
+ * unreadable. An HTML document a navigation asked for gets the WebSocket
+ * shim put first in it, with the nonce its `Content-Security-Policy` asks of
+ * scripts, if it asks for one.
  */
-function toResponse(upstream: Upstream, target: string, headOnly: boolean): Response {
+async function toResponse(
+  upstream: Upstream,
+  target: string,
+  headOnly: boolean,
+  document: boolean,
+): Promise<Response> {
   if (upstream.status < 200 || upstream.status > 599) {
     return new Response(`The onion answered with HTTP status ${upstream.status}`, {
       status: 502,
@@ -298,7 +347,8 @@ function toResponse(upstream: Upstream, target: string, headOnly: boolean): Resp
   const location = headers.get('location');
   if (location !== null) headers.set('location', rewriteLocation(location, target));
 
-  let body: BodyInit | null = upstream.bytes() as Uint8Array<ArrayBuffer>;
+  let body: Uint8Array<ArrayBuffer> | ReadableStream<Uint8Array> | null =
+    upstream.bytes() as Uint8Array<ArrayBuffer>;
   const encoding = headers.get('content-encoding')?.trim().toLowerCase();
   if (encoding && encoding !== 'identity') {
     // One coding the worker can undo, or nothing: the onion was asked for
@@ -317,7 +367,25 @@ function toResponse(upstream: Upstream, target: string, headOnly: boolean): Resp
     headers.delete('content-encoding');
   }
   if (headOnly || BODYLESS_STATUSES.has(upstream.status)) body = null;
+  else if (document && isHtml(headers.get('content-type'))) {
+    const bytes =
+      body instanceof Uint8Array ? body : new Uint8Array(await new Response(body).arrayBuffer());
+    body = withShim(bytes, shimTag(scriptNonce(headers.get('content-security-policy')))) as Uint8Array<ArrayBuffer>;
+  }
   return new Response(body, { status: upstream.status, headers });
+}
+
+function isHtml(contentType: string | null): boolean {
+  const type = contentType?.split(';')[0]?.trim().toLowerCase();
+  return type === 'text/html' || type === 'application/xhtml+xml';
+}
+
+/** The shim, as the tag put into every document loads it. */
+function shimResponse(): Response {
+  return new Response(websocketShim, {
+    status: 200,
+    headers: { 'content-type': 'text/javascript; charset=utf-8' },
+  });
 }
 
 function textResponse(status: number, text: string): Response {
@@ -452,7 +520,7 @@ async function answer(request: Request, target: string): Promise<Response> {
       maxResponseBytes: MAX_RESPONSE_BYTES,
     });
     await cookies.set(upstream.headers.getSetCookie(), requested.pathname);
-    return toResponse(upstream, target, method === 'HEAD');
+    return toResponse(upstream, target, method === 'HEAD', navigation);
   } catch (error) {
     const detail = describe(error);
     log('error', `${method} ${requested.pathname}: ${detail}`);
@@ -460,6 +528,122 @@ async function answer(request: Request, target: string): Promise<Response> {
       ? htmlResponse(502, errorPage(onion, 'The onion did not answer', detail))
       : textResponse(502, detail);
   }
+}
+
+/**
+ * One WebSocket for a page, from the shim's request to the close: open it on
+ * the onion through the Tor client, with the jar's cookies and the page's
+ * subprotocols on the upgrade, then carry every message either way on
+ * `port`. A failure at any point is an `error` and a `close` with 1006 to
+ * the page, as the browser reports a socket of its own that failed.
+ */
+async function relaySocket(port: MessagePort, request: GatewaySocketOpen): Promise<void> {
+  const onion = gateway!.onion;
+  let socket: OnionSocket | null = null;
+  let done = false;
+  // What the page asked when it closed, if it did. Set from the port's
+  // handlers, which is why it is a property rather than a local: a local
+  // assigned in a callback is narrowed to its first value everywhere else.
+  const page: { closed: { code: number; reason: string } | null } = { closed: null };
+  const tell = (message: SocketToPage, transfer: Transferable[] = []) => {
+    if (!done) port.postMessage(message, transfer);
+  };
+  const finish = (last: SocketToPage & { type: 'close' }) => {
+    tell(last);
+    done = true;
+    port.close();
+    void socket?.close().catch(() => undefined);
+  };
+  const fail = (detail: string) => {
+    log('error', `WebSocket ${request.url}: ${detail}`);
+    tell({ type: 'error', message: detail });
+    finish({ type: 'close', code: 1006, reason: '', wasClean: false });
+  };
+
+  let target: string | null = null;
+  try {
+    target = socketTarget(new URL(request.url));
+  } catch {
+    // Not a URL at all; refused below.
+  }
+  if (target === null) return fail(`not this origin's onion`);
+  const path = new URL(target).pathname;
+
+  // The page may close before the socket is open; the answer then is the
+  // close it asked for, once there is a socket to close.
+  port.onmessage = (event: MessageEvent<SocketToWorker>) => {
+    if (event.data.type === 'close') page.closed = { code: event.data.code, reason: event.data.reason };
+  };
+
+  let tor: TorClient;
+  try {
+    tor = await client(onion);
+  } catch (error) {
+    return fail(`The Tor client could not bootstrap: ${describe(error)}`);
+  }
+
+  // The upgrade in the onion's terms, as `answer` puts a request: a browser
+  // sends `Origin` on every handshake, and the cookies go where a fetch's do.
+  const headers: Record<string, string> = { origin: `http://${onion}` };
+  const cookie = await cookies.headerFor(path);
+  if (cookie !== null) headers.cookie = cookie;
+  if (request.protocols.length > 0) headers['sec-websocket-protocol'] = request.protocols.join(', ');
+
+  try {
+    socket = (await tor.connectWebSocket(target, {
+      headers,
+      timeoutMs: REQUEST_TIMEOUT_MS,
+      maxMessageBytes: MAX_SOCKET_MESSAGE_BYTES,
+    })) as OnionSocket;
+  } catch (error) {
+    return fail(describe(error));
+  }
+  await cookies.set(socket.headers.getSetCookie(), path);
+  const protocol = socket.headers.get('sec-websocket-protocol') ?? '';
+  if (protocol !== '' && !request.protocols.includes(protocol)) {
+    return fail(`the onion chose a subprotocol the page did not offer: ${protocol}`);
+  }
+  if (page.closed !== null) {
+    return finish({ type: 'close', ...page.closed, wasClean: true });
+  }
+  tell({ type: 'open', protocol });
+
+  // Sends go out in the order the page made them, each after the last has
+  // been written, and the close after all of them.
+  const opened = socket;
+  let sending: Promise<unknown> = Promise.resolve();
+  port.onmessage = (event: MessageEvent<SocketToWorker>) => {
+    const message = event.data;
+    if (message.type === 'send') {
+      const data = message.data;
+      sending = sending
+        .then(() => (typeof data === 'string' ? opened.send(data) : opened.sendBinary(new Uint8Array(data))))
+        .catch((error: unknown) => fail(`send failed: ${describe(error)}`));
+    } else if (message.type === 'close') {
+      page.closed = { code: message.code, reason: message.reason };
+      sending = sending.then(() => opened.close()).catch(() => undefined);
+    }
+  };
+
+  // Everything the onion sends, until one side closes.
+  try {
+    for (;;) {
+      const message = await opened.receive();
+      if (message === null) break;
+      if (message.type === 'text') {
+        tell({ type: 'message', data: message.text });
+      } else {
+        const { buffer, byteOffset, byteLength } = message.bytes;
+        const data = buffer.slice(byteOffset, byteOffset + byteLength) as ArrayBuffer;
+        tell({ type: 'message', data }, [data]);
+      }
+    }
+  } catch (error) {
+    if (page.closed === null) return fail(`receive failed: ${describe(error)}`);
+  }
+  // The client carries no close code either way, so the page hears the code
+  // it gave, or a normal closure for one the onion began.
+  finish({ type: 'close', ...(page.closed ?? { code: 1000, reason: '' }), wasClean: true });
 }
 
 self.addEventListener('install', () => {
@@ -471,15 +655,59 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  const target = onionUrl(new URL(event.request.url));
+  const url = new URL(event.request.url);
+  if (url.origin === here.origin && url.pathname === WEBSOCKET_SHIM_PATH) {
+    event.respondWith(shimResponse());
+    return;
+  }
+  const target = onionUrl(url);
   if (target !== null) event.respondWith(answer(event.request, target));
 });
 
+type PageMessage = GatewaySubscribe | GatewaySocketOpen | GatewayKeepAlive;
+
+/**
+ * Whether `value` is a message the shim or the bootstrap page sends, shape
+ * and all: a `websocket` one names a URL and lists its subprotocols, and one
+ * that does not is not passed on to be opened.
+ */
+function isPageMessage(value: unknown): value is PageMessage {
+  if (typeof value !== 'object' || value === null) return false;
+  const { type, url, protocols } = value as { type?: unknown; url?: unknown; protocols?: unknown };
+  if (type === 'subscribe' || type === 'keepalive') return true;
+  return (
+    type === 'websocket' &&
+    typeof url === 'string' &&
+    Array.isArray(protocols) &&
+    protocols.every((protocol) => typeof protocol === 'string')
+  );
+}
+
 self.addEventListener('message', (event) => {
   const data: unknown = event.data;
-  const isSubscribe = (value: unknown): value is GatewaySubscribe =>
-    typeof value === 'object' && value !== null && (value as { type?: unknown }).type === 'subscribe';
-  if (!isSubscribe(data) || !(event.source instanceof Client)) return;
-  subscribers.add(event.source.id);
-  event.source.postMessage(progress());
+  if (!(event.source instanceof Client)) return;
+  if (!isPageMessage(data)) {
+    // A malformed request for a socket still carried a port. It is answered
+    // as a refused socket is, so the page's socket ends rather than waits.
+    for (const port of event.ports) {
+      port.postMessage({ type: 'error', message: 'malformed request' } satisfies SocketToPage);
+      port.postMessage({ type: 'close', code: 1006, reason: '', wasClean: false } satisfies SocketToPage);
+      port.close();
+    }
+    return;
+  }
+  switch (data.type) {
+    case 'subscribe':
+      subscribers.add(event.source.id);
+      event.source.postMessage(progress());
+      return;
+    case 'websocket': {
+      const [port] = event.ports;
+      if (port) void relaySocket(port, data);
+      return;
+    }
+    case 'keepalive':
+      // Arriving is the point: it resets the browser's idle clock on this worker.
+      return;
+  }
 });
