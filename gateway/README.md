@@ -5,9 +5,9 @@ the way [`ipfs/service-worker-gateway`](https://github.com/ipfs/service-worker-g
 browses IPFS content: each site gets an origin of its own, and a service
 worker on that origin runs a Tor client compiled to WASM. Every request the
 page makes — the document, its style sheets, images, scripts, the forms it
-submits and the API calls its scripts make — is carried to the onion over
-circuits the worker builds itself, and the cookies the onion sets come back
-with the next one. No external Tor daemon or application proxy is involved.
+submits, the API calls its scripts make and the WebSockets they open — is
+carried to the onion over circuits the worker builds itself, and the cookies
+the onion sets come back with the next one. No external Tor daemon or application proxy is involved.
 The one thing a backend provides is a fresh Tor directory, over two plain HTTP
 URLs any server can answer; see [The directory endpoints](#the-directory-endpoints).
 
@@ -64,14 +64,13 @@ serve the `dist/` themselves with `--web-root`. As in the
 
 ## Test it
 
-`bun run test` checks the cookie jar's rules without a browser. The gateway
-itself is tested end to end from [`e2e`](../e2e) at the repository root:
-headless Chrome, a sample onion site published from a container, and phases
-for static content, dynamic content and cookie auth. Two more, a WebSocket
-and a sign-in for a cookie-gated one, are written but skipped until the
-gateway carries WebSockets, which it does not yet. `e2e/run.sh` brings
-everything up, this dev server included, and its README says what each
-phase checks.
+`bun run test` checks the cookie jar's rules and the placing of the
+WebSocket shim without a browser. The gateway itself is tested end to end
+from [`e2e`](../e2e) at the repository root: headless Chrome, a sample onion
+site published from a container, and five phases — static content, dynamic
+content, a WebSocket, cookie auth, and a sign-in for a cookie-gated
+WebSocket. `e2e/run.sh` brings everything up, this dev server included, and
+its README says what each phase checks.
 
 ## How a request travels
 
@@ -93,6 +92,16 @@ phase checks.
    The status, headers and body come back as a `Response`; a `Location` on an
    onion is rewritten so a redirect stays inside the gateway, and a
    `Set-Cookie` goes into the worker's jar.
+5. **WebSockets.** A service worker never sees a WebSocket handshake, so the
+   worker puts one `<script>` first in every HTML document it serves, loading
+   `/.webtor-onion-gateway/websocket.js` from the same origin. That script
+   replaces the page's `WebSocket` with one of the same shape: a
+   `new WebSocket()` for the origin, or for the onion's own `ws://` URL,
+   hands the worker a `MessageChannel` port, the worker opens the socket on
+   the onion with `client.connectWebSocket` — the jar's cookies and the
+   page's subprotocols on the upgrade — and every message is relayed over
+   the port, both ways, until either side closes. A socket for anywhere else
+   goes to the browser's own `WebSocket` untouched.
 
 The client bootstraps only in the worker, and only the worker touches the
 onion. Pages on the origin see ordinary responses — with the onion's own
@@ -182,6 +191,20 @@ the one.
   across origins with no CORS check in the way. A site's own CSP still
   applies; one that says `default-src 'self'` blocks its own absolute onion
   URLs, since the document's origin is the gateway's.
+- **WebSockets.** `ws://` or `wss://` to the gateway origin and `ws://` to
+  the page's own onion, on port 80, from any HTML document the worker
+  served. The upgrade carries the jar's cookies and `Origin:
+  http://<address>.onion`, so a cookie-gated socket opens for a signed-in
+  page and a `401` on the handshake reaches the page as an `error` and a
+  `close`. Subprotocols the page offers go out as `Sec-WebSocket-Protocol`
+  and the one the onion picks is the socket's `protocol`; a `Set-Cookie` on
+  the `101` goes into the jar. Text and binary messages both ways, up to 16
+  MiB each; `binaryType`, `bufferedAmount` and the event handler attributes
+  behave as on the browser's own. The shim is served at
+  `/.webtor-onion-gateway/websocket.js` on every onion origin, so that one
+  path is the gateway's rather than the site's; a page whose
+  `Content-Security-Policy` allows scripts by nonce gets the nonce on the
+  tag, and one that allows `'self'` needs nothing.
 - **Ports.** The onion's port 80 only; the port in the gateway URL is the
   gateway's.
 - **Size.** A response is buffered whole in the worker before the page sees
@@ -189,9 +212,16 @@ the one.
 
 ## Limits
 
-- **Plain HTTP only.** The onion's port 80, no TLS, and no WebSockets: a
-  service worker never sees a WebSocket handshake, so a site that needs one
-  wants the `WebtorClient` API directly, as the `webtor-rs` examples use it.
+- **Plain HTTP only.** The onion's port 80 and no TLS; the circuit is the
+  encrypted channel. A `wss://` to the gateway origin is carried as `ws://`
+  to the onion for the same reason.
+- **A WebSocket is a script's.** Only a document the worker served has the
+  replacement `WebSocket`: a socket opened from a worker of the page's own,
+  or from a page whose CSP names scripts by hash and nothing else, reaches
+  the browser's WebSocket, which finds nothing at the gateway host. Close
+  codes and reasons are not carried: the onion sees a normal closure whatever
+  the page said, and the page hears the code it gave, `1000` for a close the
+  onion began, and `1006` for a failure, as for any socket that failed.
 - **Cookies are the worker's, not the page's.** A script's `document.cookie`
   is the gateway origin's jar, which the onion never sees, and the onion's
   cookies are never visible to a script. A site that reads its own cookies
@@ -204,8 +234,10 @@ the one.
   within about half a minute, and the Tor client, its bridge channel and its
   circuits go with it. The next request bootstraps again — from the cached
   directory, so in seconds — and a navigation shows the bootstrap page once
-  more. The bootstrap page keeps the worker alive while it is showing; a
-  loaded site does not.
+  more. The bootstrap page keeps the worker alive while it is showing, and
+  so does a page with a WebSocket open, which nudges the worker every ten
+  seconds for as long as the socket lives; a loaded site with neither does
+  not.
 - **Absolute links leave the gateway.** A link to `http://<address>.onion/…`
   is followed by the browser as a navigation to that host, which no worker
   controls, so it fails to resolve. Only redirects are rewritten; page

@@ -87,17 +87,6 @@ const REACHABLE_DEADLINE_MS = 4 * 60_000;
 const RETRY_DEADLINE_MS = 2 * 60_000;
 const CASE_TIMEOUT = 6 * 60_000;
 
-/**
- * Whether the gateway carries a page's WebSockets to the onion. It does not
- * yet — a service worker never sees a `new WebSocket()`, so it would take a
- * shim on the page relaying to the worker's `connectWebSocket` — and until
- * it does, the cases that need one (phase 3 and phase 5) are skipped rather
- * than left red. Flip this when the gateway gets that path; the cases are
- * what it has to pass.
- */
-const WEBSOCKETS_IMPLEMENTED = false;
-const socketCase = it.skipIf(!WEBSOCKETS_IMPLEMENTED);
-
 const started = Date.now();
 const elapsed = () => `${((Date.now() - started) / 1000).toFixed(1)}s`;
 const say = (line: string) => console.log(`  ${elapsed().padStart(7)} ${line}`);
@@ -304,9 +293,10 @@ describe('the onion gateway against the sample onion site', () => {
 
   /**
    * Open a WebSocket from the page to `pathAndQuery` on its own host — what a
-   * site's script does — send `sends` once it opens, and collect what comes
-   * back until `want` messages have arrived, the socket closes, or the
-   * timeout passes.
+   * site's script does, and what the shim the gateway put in the page turns
+   * into a socket the worker opens over Tor — send `sends` once it opens,
+   * and collect what comes back until `want` messages have arrived, the
+   * socket closes, or the timeout passes.
    */
   async function wsExchange(pathAndQuery: string, sends: (string | number[])[], want: number): Promise<Exchange> {
     return page.evaluate(
@@ -562,7 +552,7 @@ describe('the onion gateway against the sample onion site', () => {
 
   // --- Phase 3: WebSocket --------------------------------------------------
 
-  socketCase('phase 3: opens a WebSocket from the page and echoes text and bytes', async () => {
+  it('phase 3: opens a WebSocket from the page and echoes text and bytes', async () => {
     await visit('/');
     const exchange = await wsExchange('/ws/echo', ['hello onion', [1, 2, 3, 250]], 3);
     say(`ws /ws/echo: ${JSON.stringify(exchange)}`);
@@ -630,14 +620,14 @@ describe('the onion gateway against the sample onion site', () => {
 
   // --- Phase 5: sign-in for a gated WebSocket ------------------------------
 
-  socketCase('phase 5: is refused the gated WebSocket while signed out', async () => {
+  it('phase 5: is refused the gated WebSocket while signed out', async () => {
     await visit('/');
     const exchange = await wsExchange('/ws/private', ['anyone there?'], 1);
     say(`ws /ws/private signed out: ${JSON.stringify(exchange)}`);
     assertRefused(exchange, 'for a signed-out visitor');
   }, CASE_TIMEOUT);
 
-  socketCase('phase 5: signs in on the login page and echoes over the gated WebSocket', async () => {
+  it('phase 5: signs in on the login page and echoes over the gated WebSocket', async () => {
     await signIn(USERNAME, PASSWORD);
     await expectText('#who', `Signed in as ${USERNAME}`);
     assert.equal(page.url(), `${origin}/private`);
@@ -648,7 +638,7 @@ describe('the onion gateway against the sample onion site', () => {
     assert.deepEqual(exchange.received, [`welcome ${USERNAME}`, `${USERNAME}: echo me`, [9, 8, 7]]);
   }, CASE_TIMEOUT);
 
-  socketCase('phase 5: loses the gated WebSocket on sign-out', async () => {
+  it('phase 5: loses the gated WebSocket on sign-out', async () => {
     await page.click('#logout button', { timeout: PAGE_TIMEOUT_MS });
     await expectText('#who', 'Not signed in');
     const exchange = await wsExchange('/ws/private', ['still there?'], 1);
