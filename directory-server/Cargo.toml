@@ -1,0 +1,51 @@
+# The reference directory server: builds a Tor directory seed from a directory
+# authority, keeps it fresh in the background, and serves it over the two
+# plain-HTTP URLs a browser Tor client such as the onion gateway asks for.
+# README.md documents those URLs; any server that answers them the same way
+# is a directory server too, and this is the shape to copy.
+[package]
+name = "webtor-directory-server"
+version = "0.0.2"
+edition = "2021"
+license = "MIT"
+publish = false
+description = "Builds and serves fresh Tor directory seeds for browser Tor clients"
+
+[[bin]]
+name = "webtor-directory-server"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "tower-log"] }
+base64 = "0.22"
+# Seed bodies are tens of megabytes and served to every onion origin; a
+# reference-counted buffer lets each response share one copy.
+bytes = "1"
+clap = { version = "4", features = ["derive", "env"] }
+flate2 = "1"
+futures = "0.3"
+hex = "0.4"
+# Plain HTTP only: directory authorities serve their DirPort without TLS, and
+# there is nothing else to talk to.
+reqwest = { version = "0.12", default-features = false }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1"
+tower = { version = "0.5", features = ["util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "fs", "signal"] }
+tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
+tracing = { version = "0.1", features = ["release_max_level_info"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Arti's document crates, the ones the client itself is built on: they parse
+# the consensus, check its signatures against the pinned authorities, and
+# read the microdescriptors, so a seed that passes here is one the client
+# will install.
+tor-checkable = "0.45.0"
+tor-llcrypto = "0.45.0"
+tor-netdoc = { version = "0.45.0", default-features = false }
+# Seed names carry a content hash, so two builds of one consensus that differ
+# in their microdescriptors never share a URL the browser may have cached.
+sha2 = "0.10"
+
+[dev-dependencies]
+http-body-util = "0.1"
