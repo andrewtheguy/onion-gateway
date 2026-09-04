@@ -43,6 +43,12 @@ const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
  * authority or a truncated transfer.
  */
 const MIN_MICRODESCRIPTOR_FRACTION = 0.9;
+/**
+ * The most the microdescriptor batches may add up to. Each is capped on its
+ * own, but a hundred batches at the cap would still be gigabytes, and every
+ * microdescriptor of a real consensus fits in a small fraction of this.
+ */
+const MAX_MICRODESCRIPTOR_BYTES = 256 * 1024 * 1024;
 
 export type Log = (line: string) => void;
 
@@ -117,17 +123,17 @@ export class Authorities {
     );
 
     const certificates = await this.get(`${certificatesPath(summary.signers)}.z`);
-    const certificateCount = countCertificates(certificates);
-    if (certificateCount < CONSENSUS_THRESHOLD) {
+    const certified = countCertificates(certificates, summary.signers);
+    if (certified < CONSENSUS_THRESHOLD) {
       throw new Error(
-        `received ${certificateCount} authority certificates; the client needs ${CONSENSUS_THRESHOLD}`,
+        `received certificates for ${certified} signing authorities; the client needs ${CONSENSUS_THRESHOLD}`,
       );
     }
 
     const paths = microdescriptorPaths(summary.digests);
     log(`Fetching ${summary.digests.length} microdescriptors in ${paths.length} batches`);
     const microdescriptors = await this.fetchAll(paths, log);
-    const received = countMicrodescriptors(microdescriptors);
+    const received = countMicrodescriptors(microdescriptors, summary.digests);
     log(`Received ${received} of ${summary.digests.length} microdescriptors`);
     if (received < summary.digests.length * MIN_MICRODESCRIPTOR_FRACTION) {
       throw new Error(
@@ -141,21 +147,33 @@ export class Authorities {
   /**
    * The documents at `paths`, concatenated in order, a few requests at a time.
    * A batch no authority serves is left out rather than failing the fetch:
-   * whether the shortfall is acceptable is `buildSeed`'s floor to judge.
+   * whether the shortfall is acceptable is `buildSeed`'s floor to judge. The
+   * batches together running past `MAX_MICRODESCRIPTOR_BYTES` does fail it.
    */
   private async fetchAll(paths: string[], log: Log): Promise<string> {
     const bodies: string[] = new Array(paths.length).fill('');
     let next = 0;
     let done = 0;
+    let total = 0;
+    let failed = false;
     const worker = async () => {
-      while (next < paths.length) {
+      while (!failed && next < paths.length) {
         const index = next++;
+        let body: string | null = null;
         try {
-          bodies[index] = withTrailingNewline(await this.get(`${paths[index]}.z`));
+          body = withTrailingNewline(await this.get(`${paths[index]}.z`));
         } catch (error: unknown) {
           log(
             `Microdescriptor batch ${index + 1}/${paths.length} failed: ${error instanceof Error ? error.message : String(error)}`,
           );
+        }
+        if (body !== null) {
+          total += Buffer.byteLength(body);
+          if (total > MAX_MICRODESCRIPTOR_BYTES) {
+            failed = true;
+            throw new Error(`the microdescriptors run past ${MAX_MICRODESCRIPTOR_BYTES} bytes`);
+          }
+          bodies[index] = body;
         }
         done++;
         if (done % 20 === 0 || done === paths.length) {

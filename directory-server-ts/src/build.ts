@@ -34,7 +34,16 @@ const seconds = ((performance.now() - started) / 1000).toFixed(0);
 if (values.seed) {
   const output = path.resolve(values.seed);
   await fs.mkdir(path.dirname(output), { recursive: true });
-  await fs.writeFile(output, seed.encoded);
+  // Written beside the destination and renamed over it, so a reader never
+  // sees a half-written seed and a failed build leaves the old one in place.
+  const partial = `${output}.tmp`;
+  try {
+    await fs.writeFile(partial, seed.encoded);
+    await fs.rename(partial, output);
+  } catch (error: unknown) {
+    await fs.rm(partial, { force: true });
+    throw error;
+  }
   console.log(`Wrote ${output} (${mib} MiB) in ${seconds}s; rebuild before ${iso8601(seed.validUntil)}`);
 } else {
   const store = path.resolve(values.store);

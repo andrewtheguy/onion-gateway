@@ -35,6 +35,10 @@ const PARALLEL_REQUESTS: usize = 4;
 /// stop a broken or hostile one from filling memory.
 const MAX_COMPRESSED_BYTES: usize = 16 * 1024 * 1024;
 const MAX_INFLATED_BYTES: usize = 64 * 1024 * 1024;
+/// The most the microdescriptor batches may add up to. Each is capped on its
+/// own, but a hundred batches at the cap would still be gigabytes, and every
+/// microdescriptor of a real consensus fits in a small fraction of this.
+const MAX_MICRODESCRIPTOR_BYTES: usize = 256 * 1024 * 1024;
 /// Relays leave the network between the consensus and this fetch, so a few
 /// missing microdescriptors are normal; a shortfall past this is a broken
 /// authority or a truncated transfer.
@@ -164,18 +168,24 @@ impl Authorities {
     /// The microdescriptors for `digests`, concatenated in the order asked,
     /// fetched a batch at a time with a few batches in flight. The order
     /// matters: a seed is named by its content hash, so two builds of one
-    /// consensus must come out byte for byte the same.
+    /// consensus must come out byte for byte the same. The batches together
+    /// running past [`MAX_MICRODESCRIPTOR_BYTES`] fails the fetch.
     async fn fetch_microdescriptors(&self, digests: &[[u8; 32]]) -> anyhow::Result<String> {
         let paths: Vec<String> = digests
             .chunks(MICRODESCRIPTORS_PER_REQUEST)
             .map(|chunk| format!("{}.z", VerifiedConsensus::microdescriptors_path(chunk)))
             .collect();
-        let bodies: Vec<String> = stream::iter(paths)
+        stream::iter(paths)
             .map(|path| async move { self.get(&path).await.map(with_trailing_newline) })
             .buffered(PARALLEL_REQUESTS)
-            .try_collect()
-            .await?;
-        Ok(bodies.concat())
+            .try_fold(String::new(), |mut all, body| async move {
+                if all.len() + body.len() > MAX_MICRODESCRIPTOR_BYTES {
+                    bail!("the microdescriptors run past {MAX_MICRODESCRIPTOR_BYTES} bytes");
+                }
+                all.push_str(&body);
+                Ok(all)
+            })
+            .await
     }
 }
 

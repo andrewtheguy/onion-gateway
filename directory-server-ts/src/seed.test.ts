@@ -10,7 +10,7 @@ import {
   microdescriptorPaths,
   summarizeConsensus,
 } from './seed.ts';
-import { consensus, digest } from './fixtures.ts';
+import { CERTIFICATES, certificate, consensus, digest, microdescriptor, signer } from './fixtures.ts';
 
 describe('summarizing a consensus', () => {
   it('reads the lifetime, relays, digests and known signers', () => {
@@ -23,7 +23,14 @@ describe('summarizing a consensus', () => {
     expect(summary.digests[7]).toBe(digest(7));
     // The unknown authority in the footer is not one.
     expect(summary.signers).toHaveLength(5);
-    expect(summary.signers[0]).toEqual({ id: 'E8A9C45EDE6D711294FADF8E7951F4DE6CA56B58', sk: 'AAAA' });
+    expect(summary.signers[0]).toEqual(signer(0));
+  });
+
+  it('counts an authority signing with two keys once, and wants both certificates', () => {
+    const rotating = [signer(0), signer(0, 9), signer(1), signer(2), signer(3)];
+    expect(() => summarizeConsensus(consensus(120, rotating))).toThrow('signed by 4 known authorities');
+    const summary = summarizeConsensus(consensus(120, [...rotating, signer(4)]));
+    expect(summary.signers).toHaveLength(6);
   });
 
   it('deduplicates digests and ignores relays outside the footer', () => {
@@ -56,9 +63,26 @@ describe('the documents a seed needs', () => {
     expect(paths[2]).toBe(`/tor/micro/d/${digest(DIGESTS_PER_REQUEST * 2)}`);
   });
 
-  it('counts what came back', () => {
-    expect(countCertificates('dir-key-certificate-version 3\nx\ndir-key-certificate-version 3\n')).toBe(2);
-    expect(countMicrodescriptors('onion-key\nx\nonion-key\nntor-onion-key y\nonion-key\n')).toBe(3);
+  it('counts the certificates of the authorities that signed, by identity and signing key', () => {
+    const signers = Array.from({ length: 5 }, (_, index) => signer(index));
+    expect(countCertificates(CERTIFICATES, signers)).toBe(5);
+    // The same certificate five times is one authority; a certificate for a
+    // key the consensus was not signed with, or for an authority that did
+    // not sign, is none.
+    expect(countCertificates(certificate(0).repeat(5), signers)).toBe(1);
+    expect(countCertificates(certificate(0, 9) + certificate(5), signers)).toBe(0);
+    // Two certificates for one authority rotating keys are still one authority.
+    expect(countCertificates(certificate(0) + certificate(0, 9), [signer(0), signer(0, 9)])).toBe(1);
+    expect(countCertificates('dir-key-certificate-version 3\nx\n', signers)).toBe(0);
+  });
+
+  it('counts the microdescriptors the consensus asked for, by digest', () => {
+    const digests = [digest(0), digest(1), digest(2)];
+    expect(countMicrodescriptors(microdescriptor(0) + microdescriptor(1), digests)).toBe(2);
+    // Repeats and strangers count for nothing.
+    expect(countMicrodescriptors(microdescriptor(0).repeat(3), digests)).toBe(1);
+    expect(countMicrodescriptors(microdescriptor(7) + 'onion-key\nx\n', digests)).toBe(0);
+    expect(countMicrodescriptors('', digests)).toBe(0);
   });
 });
 

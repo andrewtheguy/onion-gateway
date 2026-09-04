@@ -59,7 +59,11 @@ export interface ConsensusSummary {
   relays: number;
   /** Every relay's microdescriptor digest, deduplicated, in consensus order. */
   digests: string[];
-  /** The pinned authorities whose signatures the footer carries. */
+  /**
+   * The pinned authorities whose signatures the footer carries, one entry per
+   * signing key: an authority rotating keys signs with two, and both
+   * certificates are wanted, but it counts once toward the threshold.
+   */
   signers: Signer[];
 }
 
@@ -145,12 +149,18 @@ export function summarizeConsensus(consensus: string): ConsensusSummary {
       `the consensus has ${relays} relays, ${middle} usable as middles and ${hsdir} HSDirs: too few for a seed`,
     );
   }
-  if (signers.size < CONSENSUS_THRESHOLD) {
+  const authorities = countAuthorities([...signers.values()]);
+  if (authorities < CONSENSUS_THRESHOLD) {
     throw new Error(
-      `the consensus is signed by ${signers.size} known authorities; the client needs ${CONSENSUS_THRESHOLD}`,
+      `the consensus is signed by ${authorities} known authorities; the client needs ${CONSENSUS_THRESHOLD}`,
     );
   }
   return { validAfter, freshUntil, validUntil, relays, digests, signers: [...signers.values()] };
+}
+
+/** How many distinct authorities `signers` stand for. */
+export function countAuthorities(signers: Signer[]): number {
+  return new Set(signers.map(({ id }) => id)).size;
 }
 
 /** The document that carries every certificate the signers used. */
@@ -168,12 +178,46 @@ export function microdescriptorPaths(digests: string[]): string[] {
   return paths;
 }
 
-export function countCertificates(certificates: string): number {
-  return certificates.match(/^dir-key-certificate-version /gm)?.length ?? 0;
+/**
+ * The distinct authorities among `signers` that `certificates` carries a
+ * certificate for, checked by identity fingerprint and signing key. A
+ * certificate repeated or one for a key the consensus was not signed with
+ * counts for nothing, so an authority that answers with the wrong documents
+ * cannot satisfy the threshold by volume.
+ */
+export function countCertificates(certificates: string, signers: Signer[]): number {
+  const wanted = new Set(signers.map(({ id, sk }) => `${id}-${sk}`));
+  const matched = new Map<string, Signer>();
+  for (const certificate of certificates.split(/^(?=dir-key-certificate-version )/m)) {
+    const id = /^fingerprint ([0-9A-Fa-f]{40})$/m.exec(certificate)?.[1]?.toUpperCase();
+    const key = /^dir-signing-key\n-----BEGIN RSA PUBLIC KEY-----\n([\s\S]*?)-----END RSA PUBLIC KEY-----$/m.exec(
+      certificate,
+    )?.[1];
+    if (!id || !key) continue;
+    // The consensus names a signing key by the SHA-1 of its DER encoding.
+    const sk = createHash('sha1')
+      .update(Buffer.from(key.replace(/\s+/g, ''), 'base64'))
+      .digest('hex')
+      .toUpperCase();
+    if (wanted.has(`${id}-${sk}`)) matched.set(`${id}-${sk}`, { id, sk });
+  }
+  return countAuthorities([...matched.values()]);
 }
 
-export function countMicrodescriptors(microdescriptors: string): number {
-  return microdescriptors.match(/^onion-key$/gm)?.length ?? 0;
+/**
+ * How many of `digests` have their microdescriptor in `microdescriptors`. A
+ * microdescriptor is named by the SHA-256 of its text, so one that is
+ * repeated, or that no relay in the consensus has, counts for nothing.
+ */
+export function countMicrodescriptors(microdescriptors: string, digests: string[]): number {
+  const wanted = new Set(digests);
+  const matched = new Set<string>();
+  for (const document of microdescriptors.split(/^(?=onion-key$)/m)) {
+    if (!document.startsWith('onion-key')) continue;
+    const digest = createHash('sha256').update(document).digest('base64').replace(/=+$/, '');
+    if (wanted.has(digest)) matched.add(digest);
+  }
+  return matched.size;
 }
 
 /** Put the documents together in the shape the client installs, and name it. */

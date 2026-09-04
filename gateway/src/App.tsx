@@ -45,8 +45,8 @@ function Landing() {
           Each onion gets an origin of its own here, and a service worker on
           that origin runs a Tor client compiled to WASM: every request the
           page makes is fetched from the onion over circuits the worker builds
-          itself. Static content only, and nothing leaves the browser except
-          Tor cells to a Snowflake bridge.
+          itself, with the request's body and the onion's own cookies, and
+          nothing leaves the browser except Tor cells to a Snowflake bridge.
         </p>
       </header>
 
