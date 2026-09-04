@@ -15,7 +15,7 @@
     "test:e2e": "bun test --timeout 600000 e2e"
   },
   "dependencies": {
-    "@andrewtheguy/webtor-wasm": "https://github.com/andrewtheguy/webtor-rs/releases/download/v0.0.1-alpha.21/andrewtheguy-webtor-wasm-0.0.1-alpha.21.tgz",
+    "@andrewtheguy/webtor-wasm": "https://github.com/andrewtheguy/webtor-rs/releases/download/v0.0.1-alpha.22/andrewtheguy-webtor-wasm-0.0.1-alpha.22.tgz",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
