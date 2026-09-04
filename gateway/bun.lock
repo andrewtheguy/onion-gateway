@@ -5,7 +5,7 @@
     "": {
       "name": "webtor-onion-gateway",
       "dependencies": {
-        "@andrewtheguy/webtor-wasm": "file:../../webtor-rs/crates/webtor-wasm/pkg",
+        "@andrewtheguy/webtor-wasm": "https://github.com/andrewtheguy/webtor-rs/releases/download/v0.0.1-alpha.21/andrewtheguy-webtor-wasm-0.0.1-alpha.21.tgz",
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
       },
@@ -22,7 +22,7 @@
     },
   },
   "packages": {
-    "@andrewtheguy/webtor-wasm": ["@andrewtheguy/webtor-wasm@file:../../webtor-rs/crates/webtor-wasm/pkg", {}],
+    "@andrewtheguy/webtor-wasm": ["@andrewtheguy/webtor-wasm@https://github.com/andrewtheguy/webtor-rs/releases/download/v0.0.1-alpha.21/andrewtheguy-webtor-wasm-0.0.1-alpha.21.tgz", {}, "sha512-rEA4W2zFNLRXJh+bXmCKpueaCu1+8FQ5vVV263mxSa2N8sYwMNFLEnp4sRtzmDtoYYofinKNmIblh1yt6k7D5w=="],
 
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
 

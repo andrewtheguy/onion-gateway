@@ -4,10 +4,10 @@
 // service worker, over Tor: the install, the bootstrap page, the site, a
 // form POST, the cookies it sets, and a script's own request.
 //
-//   cd ../webtor-rs && bun run build                  # the WASM package the gateway installs
+//   cd /path/to/webtor-rs                             # the sample onion and the bridge live there
 //   scripts/local-onion/onion.sh start && eval "$(scripts/local-onion/onion.sh env)"
 //   scripts/local-bridge/bridge.sh start && eval "$(scripts/local-bridge/bridge.sh env)"
-//   cd ../onion-gateway/gateway && bun install && bun run test:e2e
+//   cd /path/to/onion-gateway/gateway && bun install && bun run test:e2e
 //
 // Environment:
 //   SAMPLE_ONION        http://<address>.onion, what `onion.sh env` prints

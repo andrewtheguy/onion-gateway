@@ -5,7 +5,7 @@ use serde::Serialize;
 use std::io::Write;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use sha2::{Digest, Sha256};
-use webtor_core::seed::BuiltSeed;
+use crate::seed::BuiltSeed;
 
 /// One seed, ready to serve.
 pub struct Snapshot {

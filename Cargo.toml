@@ -3,12 +3,7 @@ members = ["directory-server"]
 resolver = "2"
 
 [workspace.package]
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 license = "MIT"
 
-[workspace.dependencies]
-# The Tor client whose seed checks this backend reuses. The `webtor-rs`
-# checkout is expected beside this repository, the same way the gateway
-# installs its WASM package from `../webtor-rs/crates/webtor-wasm/pkg`.
-webtor-core = { path = "../webtor-rs/crates/webtor-core" }

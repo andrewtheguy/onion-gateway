@@ -21,14 +21,16 @@ gateway.
 
 ## Layout
 
-The `webtor-rs` checkout is expected beside this repository: the gateway
-installs `@andrewtheguy/webtor-wasm` from `../webtor-rs/crates/webtor-wasm/pkg`
-(build it there with `bun run build` first), and `directory-server` depends on
-`webtor-core` by path. The Cargo workspace here holds `directory-server`
-alone, so `cargo clippy` and `cargo test` at the root cover the Rust half.
+Nothing here needs a `webtor-rs` checkout. The gateway installs
+`@andrewtheguy/webtor-wasm` from the release tarball its `package.json` pins
+(a `.tgz` asset on a [`webtor-rs`](https://github.com/andrewtheguy/webtor-rs)
+GitHub release; change the URL to move to another version), and
+`directory-server` builds and checks seeds with Arti's `tor-netdoc` crates,
+the same ones the client is built on. The Cargo workspace here holds
+`directory-server` alone, so `cargo clippy` and `cargo test` at the root
+cover the Rust half.
 
 ```bash
-(cd ../webtor-rs && bun run build)   # the WASM package the gateway installs
 cd gateway && bun install && bun run dev
 bun run backend                      # in a second terminal: cargo run -p webtor-directory-server -- serve
 ```

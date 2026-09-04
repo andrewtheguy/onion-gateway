@@ -1,5 +1,3 @@
-import fs from 'node:fs';
-import { createRequire } from 'node:module';
 import path from 'node:path';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
@@ -18,13 +16,6 @@ const SERVICE_WORKER_SOURCE = '/src/sw.ts';
  */
 const backend = process.env.GATEWAY_DEV_BACKEND ?? '5180';
 const backendUrl = /^\d+$/.test(backend) ? `http://127.0.0.1:${backend}` : backend;
-
-function webtorWasmDirectory(): string {
-  const require = createRequire(path.join(import.meta.dirname, 'package.json'));
-  return fs.realpathSync(
-    path.dirname(require.resolve('@andrewtheguy/webtor-wasm/package.json')),
-  );
-}
 
 /**
  * Serve the service worker from the site root while developing. A worker can
@@ -66,11 +57,6 @@ export default defineConfig({
     // Every onion gets an origin of its own under whatever host the gateway
     // is opened on: `<address>.onion.intor.localhost` and the like.
     allowedHosts: ['.localhost'],
-    fs: {
-      // The WASM package lives outside this project: bun installs it from the
-      // webtor-rs checkout beside this repository as a symlink.
-      allow: [import.meta.dirname, webtorWasmDirectory()],
-    },
     // A rebuilt WASM binary and stale JS glue must never share one page load.
     hmr: false,
     // The directory endpoints come from the backend; the worker asks for

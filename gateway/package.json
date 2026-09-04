@@ -1,7 +1,7 @@
 {
   "name": "webtor-onion-gateway",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "type": "module",
   "packageManager": "bun@1.4.0",
   "scripts": {
@@ -15,7 +15,7 @@
     "test:e2e": "bun test --timeout 600000 e2e"
   },
   "dependencies": {
-    "@andrewtheguy/webtor-wasm": "file:../../webtor-rs/crates/webtor-wasm/pkg",
+    "@andrewtheguy/webtor-wasm": "https://github.com/andrewtheguy/webtor-rs/releases/download/v0.0.1-alpha.21/andrewtheguy-webtor-wasm-0.0.1-alpha.21.tgz",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

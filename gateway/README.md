@@ -24,13 +24,11 @@ as a secure context, which is what a service worker needs.
 
 ## Run it
 
-Build the WASM package first, in the `webtor-rs` checkout beside this
-repository, then install and start the gateway:
+The Tor client comes as `@andrewtheguy/webtor-wasm`, pinned in `package.json`
+to a release of [`webtor-rs`](https://github.com/andrewtheguy/webtor-rs), so
+installing is the whole setup:
 
 ```bash
-cd /path/to/webtor-rs
-bun run build
-cd ../onion-gateway/gateway
 bun install
 bun run dev
 ```
@@ -87,10 +85,10 @@ reads `SAMPLE_ONION` from the environment, plus `BRIDGE_URL` and
 as the `VITE_` variables:
 
 ```bash
-cd /path/to/webtor-rs && bun run build           # the WASM package the gateway installs
+cd /path/to/webtor-rs                            # the sample onion and the bridge live there
 scripts/local-onion/onion.sh start && eval "$(scripts/local-onion/onion.sh env)"
 scripts/local-bridge/bridge.sh start && eval "$(scripts/local-bridge/bridge.sh env)"
-cd ../onion-gateway/gateway && bun run test:e2e
+cd /path/to/onion-gateway/gateway && bun run test:e2e
 ```
 
 `CHROME_PATH` names the browser, as for the suites under `webtor-rs/tests`.
@@ -160,8 +158,8 @@ GET /api/directory/<name>.json
 
 `../directory-server` is one backend: a Rust binary that fetches the
 documents from a directory authority over plain HTTP, checks them with the
-same code the client uses on a seed, and serves them as above, refreshing on
-its own. `../directory-server-ts` is another, in TypeScript on Bun, with
+same Arti document crates the client is built on, and serves them as above,
+refreshing on its own. `../directory-server-ts` is another, in TypeScript on Bun, with
 no refresh loop: `bun run tor:directory` writes a seed and its manifest to a
 directory on disk, and `bun run serve` answers from whatever is there. The
 gateway does not depend on either being the one.

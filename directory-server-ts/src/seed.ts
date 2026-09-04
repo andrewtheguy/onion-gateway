@@ -21,9 +21,9 @@ export const SEED_VERSION = 3;
 export const DIGESTS_PER_REQUEST = 90;
 
 /**
- * v3 identity fingerprints of the directory authorities, the set pinned in
- * `crates/webtor-core/src/authority.rs`. The client ignores a signature from
- * anyone else and needs a strict majority of these.
+ * v3 identity fingerprints of the directory authorities, the set the client
+ * pins (`crates/webtor-core/src/authority.rs` in webtor-rs). The client
+ * ignores a signature from anyone else and needs a strict majority of these.
  */
 export const AUTHORITY_V3IDENTS: ReadonlySet<string> = new Set([
   '27102BC123E7AF1D4741AE047E160C91ADC76B21', // bastet

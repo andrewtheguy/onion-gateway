@@ -5,6 +5,7 @@
 //!   webtor-directory-server snapshot directory-seed.json
 
 mod fetch;
+mod seed;
 mod server;
 mod snapshot;
 

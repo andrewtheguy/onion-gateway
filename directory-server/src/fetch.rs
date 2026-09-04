@@ -1,7 +1,7 @@
 //! Building a seed from a directory authority over plain HTTP.
 //!
 //! What the documents mean, which to ask for next and whether the result is
-//! one a client will install all live in `webtor_core::seed`; this is the HTTP
+//! one a client will install all live in [`crate::seed`]; this is the HTTP
 //! around it. Authorities answer on their DirPort with bare HTTP/1.0, and a
 //! `.z` suffix asks for the zlib-compressed form of any document.
 
@@ -10,7 +10,7 @@ use futures::{stream, StreamExt, TryStreamExt};
 use std::io::Read;
 use std::time::{Duration, SystemTime};
 use tracing::info;
-use webtor_core::seed::{
+use crate::seed::{
     BuiltSeed, UnverifiedConsensus, VerifiedConsensus, CONSENSUS_PATH,
     MICRODESCRIPTORS_PER_REQUEST,
 };
@@ -116,9 +116,14 @@ impl Authorities {
             );
         }
 
-        consensus
+        let seed = consensus
             .into_seed(microdescriptors)
-            .context("the fetched documents do not make an installable seed")
+            .context("the fetched documents do not make an installable seed")?;
+        info!(
+            "The seed carries {} relays: {} usable as middles, {} HSDirs",
+            seed.relay_count, seed.middle_count, seed.hsdir_count
+        );
+        Ok(seed)
     }
 
     /// The microdescriptors for `digests`, concatenated, fetched a batch at a

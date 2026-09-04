@@ -34,7 +34,13 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync",
 tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
 tracing = { version = "0.1", features = ["release_max_level_info"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-webtor-core = { workspace = true }
+# Arti's document crates, the ones the client itself is built on: they parse
+# the consensus, check its signatures against the pinned authorities, and
+# read the microdescriptors, so a seed that passes here is one the client
+# will install.
+tor-checkable = "0.45.0"
+tor-llcrypto = "0.45.0"
+tor-netdoc = { version = "0.45.0", default-features = false }
 # Seed names carry a content hash, so two builds of one consensus that differ
 # in their microdescriptors never share a URL the browser may have cached.
 sha2 = "0.10"
