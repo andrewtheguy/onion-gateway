@@ -21,8 +21,15 @@ answers the same URLs, for the Tor directory it bootstraps from:
   reference server has and the gateway does not need of a backend. The seed
   is built by a script you run yourself.
 
-Each directory is self-contained: its own manifest, lock file and tests, and
-nothing in one is imported by another. The gateway installs the Tor client
+- [`e2e`](e2e) — the gateway end to end: headless Chrome opens a sample
+  onion site, published as an onion service from a container in that
+  directory, through the gateway, and checks static content, dynamic
+  content, WebSockets, cookie auth and a sign-in for a cookie-gated
+  WebSocket, phase by phase. `e2e/run.sh` brings the whole rig up.
+
+Each project directory is self-contained: its own manifest, lock file and
+tests, and nothing in one is imported by another; `e2e` is the one directory
+that spans them, since it runs the gateway against the reference server. The gateway installs the Tor client
 from a release tarball its `package.json` pins, and the servers build seeds
 from the directory authorities directly. The READMEs link across only to
 name which project plays which part.

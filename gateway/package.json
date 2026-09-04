@@ -9,8 +9,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b",
-    "test": "bun test src",
-    "test:e2e": "bun test --timeout 600000 e2e"
+    "test": "bun test src"
   },
   "dependencies": {
     "@andrewtheguy/webtor-wasm": "https://github.com/andrewtheguy/webtor-rs/releases/download/v0.0.1-alpha.22/andrewtheguy-webtor-wasm-0.0.1-alpha.22.tgz",
@@ -23,7 +22,6 @@
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
-    "playwright-core": "^1.50.0",
     "typescript": "~5.9.3",
     "vite": "^7.2.4"
   }
