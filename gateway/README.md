@@ -66,10 +66,12 @@ serve the `dist/` themselves with `--web-root`. As in the
 
 `bun run test` checks the cookie jar's rules without a browser. The gateway
 itself is tested end to end from [`e2e`](../e2e) at the repository root:
-headless Chrome, a sample onion site published from a container, and five
-phases from static content through a cookie-gated WebSocket. `e2e/run.sh`
-brings everything up, this dev server included, and its README says what
-each phase checks.
+headless Chrome, a sample onion site published from a container, and phases
+for static content, dynamic content and cookie auth. Two more, a WebSocket
+and a sign-in for a cookie-gated one, are written but skipped until the
+gateway carries WebSockets, which it does not yet. `e2e/run.sh` brings
+everything up, this dev server included, and its README says what each
+phase checks.
 
 ## How a request travels
 

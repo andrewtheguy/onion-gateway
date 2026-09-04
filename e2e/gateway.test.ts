@@ -381,6 +381,27 @@ describe('the onion gateway against the sample onion site', () => {
     assert.notEqual(exchange.closeCode, null, `the gated socket never closed ${when}: ${shown}`);
   }
 
+  /**
+   * Vite on a free port, which is the port it is then started on. The probe
+   * frees the port a moment before Vite binds it, and `--strictPort` makes
+   * Vite exit rather than move if something else took it in between, so an
+   * exit — not a timeout — is answered with one more probe and one more try.
+   * Vite's own line about the port is in the log either way.
+   */
+  async function startGateway(): Promise<number> {
+    for (let attempt = 1; ; attempt++) {
+      const port = await freePort();
+      try {
+        vite = await startVite(port, DIRECTORY_BACKEND);
+        return port;
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        if (attempt > 1 || !/exited with/.test(reason)) throw error;
+        say(`vite did not come up on ${port} (${reason}); trying another port`);
+      }
+    }
+  }
+
   /** Submit the sign-in form on `/login` and wait for the answer. */
   async function signIn(username: string, password: string): Promise<void> {
     await visit('/login');
@@ -400,8 +421,7 @@ describe('the onion gateway against the sample onion site', () => {
     );
 
     await checkBackend();
-    const port = await freePort();
-    vite = await startVite(port, DIRECTORY_BACKEND);
+    const port = await startGateway();
     origin = `http://${onion}.${GATEWAY_HOST}:${port}`;
     say(`gateway at ${origin}`);
 
