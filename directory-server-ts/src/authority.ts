@@ -31,6 +31,13 @@ const REQUEST_TIMEOUT_MS = 60_000;
 /** Microdescriptor batches in flight at once. */
 const PARALLEL_REQUESTS = 4;
 /**
+ * The most one document may be, on the wire and once inflated. A microdesc
+ * consensus is a few megabytes and a microdescriptor batch a few hundred
+ * kilobytes, so this is far above anything an honest authority serves and
+ * stops a broken or hostile one from filling memory.
+ */
+const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
+/**
  * Relays leave the network between the consensus and this fetch, so a few
  * missing microdescriptors are normal; a shortfall past this is a broken
  * authority or a truncated transfer.
@@ -55,7 +62,9 @@ export class Authorities {
     for (const authority of this.urls) {
       try {
         const body = await this.getFrom(authority, path);
-        const bytes = path.endsWith('.z') ? zlib.inflateSync(body) : body;
+        const bytes = path.endsWith('.z')
+          ? zlib.inflateSync(body, { maxOutputLength: MAX_DOCUMENT_BYTES })
+          : body;
         return bytes.toString('utf8');
       } catch (error: unknown) {
         failures.push(`${authority}: ${error instanceof Error ? error.message : String(error)}`);
@@ -80,7 +89,15 @@ export class Authorities {
             return;
           }
           const chunks: Buffer[] = [];
-          response.on('data', (chunk: Buffer) => chunks.push(chunk));
+          let received = 0;
+          response.on('data', (chunk: Buffer) => {
+            received += chunk.length;
+            if (received > MAX_DOCUMENT_BYTES) {
+              request.destroy(new Error(`the response runs past ${MAX_DOCUMENT_BYTES} bytes`));
+              return;
+            }
+            chunks.push(chunk);
+          });
           response.on('end', () => resolve(Buffer.concat(chunks)));
           response.on('error', reject);
         },

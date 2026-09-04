@@ -31,6 +31,12 @@ describe('the directory URL', () => {
       'https://seeds.example/tor/current',
     );
   });
+
+  it('resolves a configured path against the gateway host', () => {
+    expect(directoryUrl('/seeds/current', 'http:', 'intor.localhost:5173')).toBe(
+      'http://intor.localhost:5173/seeds/current',
+    );
+  });
 });
 
 describe('loading a directory', () => {

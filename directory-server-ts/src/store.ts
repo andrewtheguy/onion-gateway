@@ -16,8 +16,10 @@ import { iso8601, type Seed } from './seed.ts';
 export const MANIFEST_FILE = 'manifest.json';
 /** Where `bun run tor:directory` writes and `bun run serve` reads unless told otherwise: `./directory`. */
 export const DEFAULT_STORE = path.join(import.meta.dirname, '..', 'directory');
+/** Where the server answers the manifest; seeds are under it. */
+export const DIRECTORY_PATH = '/api/directory';
 /** Where the server answers seeds, and so what the manifest's `url` is relative to. */
-export const SEED_URL_PREFIX = '/api/directory/';
+export const SEED_URL_PREFIX = `${DIRECTORY_PATH}/`;
 
 /** The manifest, exactly as the contract has the server answer it. */
 export interface Manifest {

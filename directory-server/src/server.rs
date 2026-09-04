@@ -183,10 +183,11 @@ async fn seed(
         snapshot.name,
         if gzip { "gzip" } else { "identity" },
         body.len() / (1024 * 1024),
-        request_headers
-            .get(header::ORIGIN)
-            .and_then(|origin| origin.to_str().ok())
-            .unwrap_or("a same-origin caller"),
+        if request_headers.contains_key(header::ORIGIN) {
+            "a cross-origin caller"
+        } else {
+            "a same-origin caller"
+        },
     );
     (headers, body).into_response()
 }

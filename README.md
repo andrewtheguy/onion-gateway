@@ -32,5 +32,5 @@ cover the Rust half.
 
 ```bash
 cd gateway && bun install && bun run dev
-bun run backend                      # in a second terminal: cargo run -p webtor-directory-server -- serve
+cd gateway && bun run backend        # in a second terminal: cargo run -p webtor-directory-server -- serve
 ```

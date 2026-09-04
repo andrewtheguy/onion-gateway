@@ -11,9 +11,9 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { isSeedName, readManifest, seedName, type Manifest } from './store.ts';
+import { DIRECTORY_PATH, isSeedName, readManifest, seedName, type Manifest } from './store.ts';
 
-export const DIRECTORY_PATH = '/api/directory';
+export { DIRECTORY_PATH };
 /** What the manifest tells a worker to wait when there is nothing to serve. */
 const RETRY_AFTER_SECONDS = 30;
 /** A seed stays cacheable at least this long, however close to expiry. */
@@ -105,7 +105,7 @@ export function createHandler(options: ServerOptions): (request: Request) => Pro
     const body = acceptsGzip && (await gzip.exists()) ? gzip : plain;
     if (body === gzip) headers['content-encoding'] = 'gzip';
     log(
-      `Serving directory ${name} (${body === gzip ? 'gzip' : 'plain'}, ${(body.size / 1024 / 1024).toFixed(1)} MiB) to ${request.headers.get('origin') ?? 'an unnamed origin'}`,
+      `Serving directory ${name} (${body === gzip ? 'gzip' : 'plain'}, ${(body.size / 1024 / 1024).toFixed(1)} MiB) to ${request.headers.has('origin') ? 'a cross-origin caller' : 'a same-origin caller'}`,
     );
     return file(request, body, { headers });
   }

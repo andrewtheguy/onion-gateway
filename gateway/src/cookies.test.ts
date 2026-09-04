@@ -98,6 +98,15 @@ describe('withCookie and cookieHeader', () => {
     expect(jar).toHaveLength(0);
   });
 
+  it('keeps the cookie just set when a full jar is trimmed', () => {
+    let jar: Cookie[] = [];
+    for (let index = 0; index < 180; index++) jar = withCookie(jar, parse(`c${index}=1`)!, NOW);
+    expect(jar).toHaveLength(180);
+    jar = withCookie(jar, parse('fresh=1')!, NOW);
+    expect(jar).toHaveLength(180);
+    expect(jar.some((cookie) => cookie.name === 'fresh')).toBe(true);
+  });
+
   it('leaves lapsed cookies out of the header', () => {
     const jar = withCookie([], parse('a=1; Max-Age=60')!, NOW);
     expect(cookieHeader(jar, '/', NOW + 59_000)).toBe('a=1');

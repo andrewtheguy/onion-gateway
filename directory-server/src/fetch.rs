@@ -8,6 +8,7 @@
 use anyhow::{anyhow, bail, Context};
 use futures::{stream, StreamExt, TryStreamExt};
 use std::io::Read;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, SystemTime};
 use tracing::info;
 use crate::seed::{
@@ -28,6 +29,12 @@ pub const DEFAULT_AUTHORITIES: &[&str] = &[
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 /// Microdescriptor batches in flight at once, each on its own connection.
 const PARALLEL_REQUESTS: usize = 4;
+/// The most one document may be on the wire and once inflated. A microdesc
+/// consensus is a few megabytes and a microdescriptor batch a few hundred
+/// kilobytes, so these are far above anything an honest authority serves and
+/// stop a broken or hostile one from filling memory.
+const MAX_COMPRESSED_BYTES: usize = 16 * 1024 * 1024;
+const MAX_INFLATED_BYTES: usize = 64 * 1024 * 1024;
 /// Relays leave the network between the consensus and this fetch, so a few
 /// missing microdescriptors are normal; a shortfall past this is a broken
 /// authority or a truncated transfer.
@@ -37,6 +44,11 @@ const MIN_MICRODESCRIPTOR_FRACTION: f64 = 0.9;
 pub struct Authorities {
     client: reqwest::Client,
     urls: Vec<String>,
+    /// Index into `urls` of the authority that last answered, tried first
+    /// next time: the one that served the consensus is up and near, and the
+    /// hundred microdescriptor batches that follow should not each walk the
+    /// list past authorities that are down.
+    preferred: AtomicUsize,
 }
 
 impl Authorities {
@@ -49,16 +61,28 @@ impl Authorities {
             .user_agent("webtor-directory-server")
             .build()
             .context("building the HTTP client")?;
-        Ok(Self { client, urls })
+        Ok(Self {
+            client,
+            urls,
+            preferred: AtomicUsize::new(0),
+        })
     }
 
-    /// GET `path` from the first authority that serves it, inflated when
-    /// `path` asked for the compressed form.
+    /// GET `path` from the first authority that serves it — the one that
+    /// answered last, then the rest in order — inflated when `path` asked
+    /// for the compressed form.
     async fn get(&self, path: &str) -> anyhow::Result<String> {
         let mut failures = Vec::new();
-        for authority in &self.urls {
+        let preferred = self.preferred.load(Ordering::Relaxed);
+        let order = std::iter::once(preferred)
+            .chain((0..self.urls.len()).filter(|index| *index != preferred));
+        for index in order {
+            let authority = &self.urls[index];
             match self.get_from(authority, path).await {
-                Ok(body) => return Ok(body),
+                Ok(body) => {
+                    self.preferred.store(index, Ordering::Relaxed);
+                    return Ok(body);
+                }
                 Err(error) => failures.push(format!("{authority}: {error:#}")),
             }
         }
@@ -74,15 +98,26 @@ impl Authorities {
         if !status.is_success() {
             bail!("HTTP {status}");
         }
-        let bytes = response.bytes().await?;
+        let mut response = response;
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await? {
+            if bytes.len() + chunk.len() > MAX_COMPRESSED_BYTES {
+                bail!("the response runs past {MAX_COMPRESSED_BYTES} bytes");
+            }
+            bytes.extend_from_slice(&chunk);
+        }
         let bytes = if path.ends_with(".z") {
             let mut inflated = Vec::new();
             flate2::read::ZlibDecoder::new(&bytes[..])
+                .take(MAX_INFLATED_BYTES as u64 + 1)
                 .read_to_end(&mut inflated)
                 .context("inflating the response")?;
+            if inflated.len() > MAX_INFLATED_BYTES {
+                bail!("the document inflates past {MAX_INFLATED_BYTES} bytes");
+            }
             inflated
         } else {
-            bytes.to_vec()
+            bytes
         };
         String::from_utf8(bytes).context("the document is not UTF-8")
     }
@@ -126,8 +161,10 @@ impl Authorities {
         Ok(seed)
     }
 
-    /// The microdescriptors for `digests`, concatenated, fetched a batch at a
-    /// time with a few batches in flight.
+    /// The microdescriptors for `digests`, concatenated in the order asked,
+    /// fetched a batch at a time with a few batches in flight. The order
+    /// matters: a seed is named by its content hash, so two builds of one
+    /// consensus must come out byte for byte the same.
     async fn fetch_microdescriptors(&self, digests: &[[u8; 32]]) -> anyhow::Result<String> {
         let paths: Vec<String> = digests
             .chunks(MICRODESCRIPTORS_PER_REQUEST)
@@ -135,7 +172,7 @@ impl Authorities {
             .collect();
         let bodies: Vec<String> = stream::iter(paths)
             .map(|path| async move { self.get(&path).await.map(with_trailing_newline) })
-            .buffer_unordered(PARALLEL_REQUESTS)
+            .buffered(PARALLEL_REQUESTS)
             .try_collect()
             .await?;
         Ok(bodies.concat())

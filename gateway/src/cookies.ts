@@ -114,9 +114,12 @@ export function withCookie(jar: readonly Cookie[], cookie: Cookie, now: number):
   const previous = jar.find((c) => c.name === cookie.name && c.path === cookie.path);
   const kept = jar.filter((c) => c !== previous && !lapsed(c, now));
   if (lapsed(cookie, now)) return kept;
-  kept.push(previous ? { ...cookie, created: previous.created } : cookie);
+  // The jar is trimmed before the cookie just set goes in, so that it is
+  // never the one trimmed away, whatever the others' access times.
   kept.sort((a, b) => b.accessed - a.accessed);
-  return kept.slice(0, MAX_COOKIES);
+  const trimmed = kept.slice(0, MAX_COOKIES - 1);
+  trimmed.push(previous ? { ...cookie, created: previous.created } : cookie);
+  return trimmed;
 }
 
 /**

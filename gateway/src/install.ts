@@ -19,7 +19,17 @@ export type Install =
   | { state: 'reloading' }
   | { state: 'failed'; reason: string };
 
+/**
+ * Whether an install is already under way. React's development StrictMode
+ * runs an effect twice, and the second run would clear the reload marker the
+ * first one read and register the worker again; the first call is the
+ * install, and later ones change nothing.
+ */
+let started = false;
+
 export function installGateway(onChange: (install: Install) => void): void {
+  if (started) return;
+  started = true;
   void (async () => {
     if (!('serviceWorker' in navigator)) {
       throw new Error(

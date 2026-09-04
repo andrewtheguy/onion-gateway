@@ -95,6 +95,9 @@ const BODYLESS_STATUSES = new Set([101, 204, 205, 304]);
 /** `Content-Encoding`s the worker undoes itself; see `toResponse`. */
 const DECODABLE_ENCODINGS = new Set(['gzip', 'deflate', 'deflate-raw']);
 
+/** The most bootstrap lines kept for the page that follows it. */
+const MAX_LINES = 200;
+
 /**
  * What the onion is told it may compress with: the codings above and nothing
  * else, so a `br` or `zstd` body the worker could not undo never arrives.
@@ -163,7 +166,7 @@ async function broadcast(): Promise<void> {
 }
 
 function log(level: GatewayLevel, message: string): void {
-  lines = [...lines, { at: Date.now(), level, message }];
+  lines = [...lines, { at: Date.now(), level, message }].slice(-MAX_LINES);
   console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'info'](`[gateway] ${message}`);
   void broadcast();
 }
@@ -297,7 +300,17 @@ function toResponse(upstream: Upstream, target: string, headOnly: boolean): Resp
 
   let body: BodyInit | null = upstream.bytes() as Uint8Array<ArrayBuffer>;
   const encoding = headers.get('content-encoding')?.trim().toLowerCase();
-  if (encoding && DECODABLE_ENCODINGS.has(encoding)) {
+  if (encoding && encoding !== 'identity') {
+    // One coding the worker can undo, or nothing: the onion was asked for
+    // `gzip, deflate` and a body in anything else — `br`, `zstd`, a stack of
+    // codings — cannot be made readable here, and forwarding it as it is
+    // would hand the page bytes it cannot read either.
+    if (!DECODABLE_ENCODINGS.has(encoding)) {
+      return new Response(`The onion answered with an unsupported Content-Encoding: ${encoding}`, {
+        status: 502,
+        headers: { 'content-type': 'text/plain; charset=utf-8' },
+      });
+    }
     body = new Response(body).body!.pipeThrough(
       new DecompressionStream(encoding as CompressionFormat),
     );

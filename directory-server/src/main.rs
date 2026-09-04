@@ -72,9 +72,7 @@ async fn main() -> anyhow::Result<()> {
                 .with_context(|| format!("cannot listen on {listen}"))?;
             info!("Serving {} on http://{listen}", server::DIRECTORY_PATH);
             axum::serve(listener, server::router(directory, web_root))
-                .with_graceful_shutdown(async {
-                    let _ = tokio::signal::ctrl_c().await;
-                })
+                .with_graceful_shutdown(shutdown_signal())
                 .await?;
         }
         Command::Snapshot { output } => {
@@ -92,4 +90,27 @@ async fn main() -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Resolves on Ctrl-C or, on Unix, SIGTERM — what a container runtime or
+/// service manager sends — so in-flight requests drain either way.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(_) => std::future::pending().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        () = ctrl_c => {}
+        () = terminate => {}
+    }
 }

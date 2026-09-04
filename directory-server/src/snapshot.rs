@@ -1,6 +1,7 @@
 //! A built seed as the server holds it: named, hashed, compressed once, and
 //! described by the manifest the gateway reads first.
 
+use bytes::Bytes;
 use serde::Serialize;
 use std::io::Write;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -12,8 +13,9 @@ pub struct Snapshot {
     /// `<valid-after>-<content hash>`: unique to these bytes, so a browser
     /// may cache the URL that names it for as long as the seed is valid.
     pub name: String,
-    pub json: Vec<u8>,
-    pub gzip: Vec<u8>,
+    /// Shared, not copied, by every response that serves it.
+    pub json: Bytes,
+    pub gzip: Bytes,
     pub relay_count: usize,
     pub valid_after: SystemTime,
     pub fresh_until: SystemTime,
@@ -48,8 +50,8 @@ impl Snapshot {
             .and_then(|()| encoder.finish())
             .map(|gzip| Self {
                 name,
-                gzip,
-                json,
+                gzip: Bytes::from(gzip),
+                json: Bytes::from(json),
                 relay_count: seed.relay_count,
                 valid_after: seed.valid_after,
                 fresh_until: seed.fresh_until,

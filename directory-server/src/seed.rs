@@ -63,7 +63,7 @@ const AUTHORITY_V3IDENTS: [&str; 9] = [
 
 /// Floors for a usable directory, matching what the client refuses to
 /// install: relays usable as a middle hop, and relays on the HSDir ring.
-const MIN_RELAYS_PER_ROLE: usize = 10;
+const MIN_MIDDLE_RELAYS: usize = 10;
 const MIN_HSDIR_RELAYS: usize = 100;
 
 /// The pinned authority identities, decoded.
@@ -319,7 +319,7 @@ fn count_relays(consensus: &MdConsensus, microdescriptors: &str) -> anyhow::Resu
         }
     }
 
-    if counts.middle < MIN_RELAYS_PER_ROLE || counts.hsdir < MIN_HSDIR_RELAYS {
+    if counts.middle < MIN_MIDDLE_RELAYS || counts.hsdir < MIN_HSDIR_RELAYS {
         bail!(
             "too few usable relays for a directory (middle: {}, HSDir: {})",
             counts.middle,

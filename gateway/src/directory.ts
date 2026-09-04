@@ -40,17 +40,18 @@ const SEED_TIMEOUT_MS = 120_000;
 
 /**
  * The manifest URL: `configured` when the deployment names one — a backend
- * on another host, say — and the gateway host's own `/api/directory`
- * otherwise, which is where the dev server proxies and the example backend
- * answers.
+ * on another host, say, or a path on the gateway host, which it is resolved
+ * against — and the gateway host's own `/api/directory` otherwise, which is
+ * where the dev server proxies and the example backend answers.
  */
 export function directoryUrl(
   configured: string | undefined,
   protocol: string,
   rootHost: string,
 ): string {
-  if (configured) return new URL(configured).href;
-  return `${protocol}//${rootHost}/api/directory`;
+  const gateway = `${protocol}//${rootHost}/`;
+  if (configured) return new URL(configured, gateway).href;
+  return `${gateway}api/directory`;
 }
 
 /**

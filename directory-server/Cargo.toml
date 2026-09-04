@@ -20,6 +20,9 @@ path = "src/main.rs"
 anyhow = "1"
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "tower-log"] }
 base64 = "0.22"
+# Seed bodies are tens of megabytes and served to every onion origin; a
+# reference-counted buffer lets each response share one copy.
+bytes = "1"
 clap = { version = "4", features = ["derive", "env"] }
 flate2 = "1"
 futures = "0.3"
