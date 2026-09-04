@@ -666,15 +666,36 @@ self.addEventListener('fetch', (event) => {
 
 type PageMessage = GatewaySubscribe | GatewaySocketOpen | GatewayKeepAlive;
 
+/**
+ * Whether `value` is a message the shim or the bootstrap page sends, shape
+ * and all: a `websocket` one names a URL and lists its subprotocols, and one
+ * that does not is not passed on to be opened.
+ */
 function isPageMessage(value: unknown): value is PageMessage {
   if (typeof value !== 'object' || value === null) return false;
-  const { type } = value as { type?: unknown };
-  return type === 'subscribe' || type === 'websocket' || type === 'keepalive';
+  const { type, url, protocols } = value as { type?: unknown; url?: unknown; protocols?: unknown };
+  if (type === 'subscribe' || type === 'keepalive') return true;
+  return (
+    type === 'websocket' &&
+    typeof url === 'string' &&
+    Array.isArray(protocols) &&
+    protocols.every((protocol) => typeof protocol === 'string')
+  );
 }
 
 self.addEventListener('message', (event) => {
   const data: unknown = event.data;
-  if (!isPageMessage(data) || !(event.source instanceof Client)) return;
+  if (!(event.source instanceof Client)) return;
+  if (!isPageMessage(data)) {
+    // A malformed request for a socket still carried a port. It is answered
+    // as a refused socket is, so the page's socket ends rather than waits.
+    for (const port of event.ports) {
+      port.postMessage({ type: 'error', message: 'malformed request' } satisfies SocketToPage);
+      port.postMessage({ type: 'close', code: 1006, reason: '', wasClean: false } satisfies SocketToPage);
+      port.close();
+    }
+    return;
+  }
   switch (data.type) {
     case 'subscribe':
       subscribers.add(event.source.id);
