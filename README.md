@@ -1,7 +1,9 @@
 # onion-gateway
 
 Three projects that together let a browser reach plain-HTTP onion sites with
-no Tor daemon or proxy, each usable on its own:
+no Tor daemon or proxy. Each is a self-contained codebase; at run time the
+gateway is paired with one of the directory servers, or any backend that
+answers the same URLs, for the Tor directory it bootstraps from:
 
 - [`gateway`](gateway) — the front end: a Vite/React app whose service worker,
   one per onion origin, runs the [`webtor-rs`](https://github.com/andrewtheguy/webtor-rs)
@@ -25,7 +27,15 @@ from a release tarball its `package.json` pins, and the servers build seeds
 from the directory authorities directly. The READMEs link across only to
 name which project plays which part.
 
+Both commands run from the repository root, each in a terminal of its own,
+since `serve` keeps running:
+
 ```bash
-cd directory-server && cargo run -- serve   # a backend on 127.0.0.1:5180
-cd gateway && bun install && bun run dev    # the front end on http://intor.localhost:5173/
+# terminal 1: a backend on 127.0.0.1:5180
+cd directory-server && cargo run -- serve
+```
+
+```bash
+# terminal 2: the front end on http://intor.localhost:5173/
+cd gateway && bun install && bun run dev
 ```
