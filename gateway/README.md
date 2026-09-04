@@ -64,27 +64,14 @@ serve the `dist/` themselves with `--web-root`. As in the
 
 ## Test it
 
-`bun run test` checks the cookie jar's rules without a browser. `bun run
-test:e2e` is the gateway itself, in headless Chrome, against the dynamic
-sample site that `scripts/local-onion` in `webtor-rs` publishes as an onion
-service: the
-install, the bootstrap page, the site's first page, a reload that carries the
-cookie it set, a form sign-in answered with a `303` and a session cookie, a
-script's `fetch` whose `Origin`, `Referer` and `Cookie` arrive in the onion's
-terms, and a sign-out. It starts Vite on a port of its own, expects a
-directory backend serving a seed on `127.0.0.1:5180` or wherever
-`DIRECTORY_BACKEND` points, and reads `SAMPLE_ONION` from the environment, plus `BRIDGE_URL` and
-`BRIDGE_FINGERPRINT` for a bridge of your own, which it hands to the worker
-as the `VITE_` variables:
-
-```bash
-cd /path/to/webtor-rs                            # the sample onion and the bridge live there
-scripts/local-onion/onion.sh start && eval "$(scripts/local-onion/onion.sh env)"
-scripts/local-bridge/bridge.sh start && eval "$(scripts/local-bridge/bridge.sh env)"
-cd /path/to/onion-gateway/gateway && bun run test:e2e   # with a directory backend running
-```
-
-`CHROME_PATH` names the browser, as for the suites under `webtor-rs/tests`.
+`bun run test` checks the cookie jar's rules without a browser. The gateway
+itself is tested end to end from [`e2e`](../e2e) at the repository root:
+headless Chrome, a sample onion site published from a container, and phases
+for static content, dynamic content and cookie auth. Two more, a WebSocket
+and a sign-in for a cookie-gated one, are written but skipped until the
+gateway carries WebSockets, which it does not yet. `e2e/run.sh` brings
+everything up, this dev server included, and its README says what each
+phase checks.
 
 ## How a request travels
 
