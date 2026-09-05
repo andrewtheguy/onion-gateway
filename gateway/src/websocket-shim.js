@@ -15,11 +15,14 @@
 (() => {
   'use strict';
 
-  const gateway = /^([a-z2-7]{56}\.onion)\.(.+)$/.exec(location.hostname);
+  // The address is the first label whether or not `.onion` follows it: the
+  // worker serving this script is on a gateway origin of one form or the
+  // other, and only the address is needed here.
+  const gateway = /^([a-z2-7]{56})(?:\.onion)?\./.exec(location.hostname);
   const worker = navigator.serviceWorker;
   const NativeWebSocket = globalThis.WebSocket;
   if (!gateway || !worker || !NativeWebSocket) return;
-  const onion = gateway[1];
+  const onion = `${gateway[1]}.onion`;
 
   const CONNECTING = 0;
   const OPEN = 1;
