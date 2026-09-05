@@ -15,11 +15,13 @@ answers the same URLs, for the Tor directory it bootstraps from:
   it with Arti's document crates, refreshes it as each hourly consensus is
   published, and serves it. Its README is where the server side of the
   contract is written down.
-- [`directory-server-ts`](directory-server-ts) — a sample, in TypeScript on
-  Bun, showing the same contract answered from another language and nothing
-  more: no refresh loop and no native Tor document verification, which the
-  reference server has and the gateway does not need of a backend. The seed
-  is built by a script you run yourself.
+- [`directory-server-ts`](directory-server-ts) — the same contract in
+  TypeScript on Bun, in two shapes. A server that answers the two URLs from
+  a seed a script builds when you run it, with no refresh loop and no native
+  Tor document verification, which the reference server has and the gateway
+  does not need of a backend; and a publisher that lays the seed out as a
+  static site and uploads it to Cloudflare Workers, where serving it is free
+  without billing, so the hourly build is the only thing you run.
 - [`e2e`](e2e) — the gateway end to end: headless Chrome opens a sample
   onion site, published as an onion service from a container in that
   directory, through the gateway, and checks static content, dynamic

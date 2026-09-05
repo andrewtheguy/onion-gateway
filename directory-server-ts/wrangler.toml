@@ -1,0 +1,8 @@
+# The Worker `bun run tor:publish` deploys: static assets and no script, so
+# every request is served from the assets, which the free plan neither
+# counts nor bills. `--assets` on the command line names the site directory.
+name = "webtor-directory"
+compatibility_date = "2026-09-01"
+
+[assets]
+directory = "./site"
