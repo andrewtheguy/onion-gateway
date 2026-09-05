@@ -39,6 +39,12 @@ export interface LoadedDirectory {
 const MANIFEST_TIMEOUT_MS = 15_000;
 /** The seed is tens of megabytes, from a host expected to be near. */
 const SEED_TIMEOUT_MS = 120_000;
+/**
+ * The most a seed may be, whatever its manifest claims: a seed is some forty
+ * megabytes today, and a body — a gzipped one above all — that inflates past
+ * this is not one. The manifest's `bytes` is the limit within it.
+ */
+export const MAX_SEED_BYTES = 256 * 1024 * 1024;
 
 /**
  * The manifest URL: `configured` when the deployment names one — a backend
@@ -82,18 +88,37 @@ export async function loadDirectory(
   if (!seedResponse.ok) {
     throw new Error(`the directory seed answered HTTP ${seedResponse.status}`);
   }
-  const seed = await seedText(seedResponse, new URL(seedUrl).pathname.endsWith('.gz'));
+  const seed = await seedText(seedResponse, new URL(seedUrl).pathname.endsWith('.gz'), manifest.bytes);
   if (!seed.startsWith('{"version":')) {
     throw new Error('the directory seed is not one');
   }
   return { seed, manifest, seedUrl };
 }
 
-/** The seed as text: the body, inflated first when the URL said it is gzipped. */
-async function seedText(response: Response, gzipped: boolean): Promise<string> {
-  if (!gzipped) return response.text();
+/**
+ * The seed as text: the body, inflated first when the URL said it is gzipped,
+ * and no more than `maxBytes` of it. The stream fails, and the body with it,
+ * as soon as the seed runs past what the manifest said it is.
+ */
+async function seedText(response: Response, gzipped: boolean, maxBytes: number): Promise<string> {
   if (!response.body) throw new Error('the directory seed has no body');
-  return new Response(response.body.pipeThrough(new DecompressionStream('gzip'))).text();
+  const body = gzipped ? response.body.pipeThrough(new DecompressionStream('gzip')) : response.body;
+  return new Response(body.pipeThrough(atMost(maxBytes))).text();
+}
+
+/** Passes bytes through until one more than `limit` has gone by, then fails. */
+function atMost(limit: number): TransformStream<Uint8Array, Uint8Array> {
+  let seen = 0;
+  return new TransformStream({
+    transform(chunk, controller) {
+      seen += chunk.byteLength;
+      if (seen > limit) {
+        controller.error(new Error(`the directory seed is over its ${limit} bytes`));
+        return;
+      }
+      controller.enqueue(chunk);
+    },
+  });
 }
 
 function asManifest(value: unknown): DirectoryManifest {
@@ -104,7 +129,9 @@ function asManifest(value: unknown): DirectoryManifest {
     typeof record.validAfter !== 'string' ||
     typeof record.freshUntil !== 'string' ||
     typeof record.validUntil !== 'string' ||
-    typeof record.bytes !== 'number' ||
+    !Number.isInteger(record.bytes) ||
+    (record.bytes as number) <= 0 ||
+    (record.bytes as number) > MAX_SEED_BYTES ||
     typeof record.relays !== 'number'
   ) {
     throw new Error('the directory manifest is malformed');
