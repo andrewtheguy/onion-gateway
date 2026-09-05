@@ -75,6 +75,7 @@ the handshake reaches the page as a close rather than a hang.
 | `SAMPLE_ONION` | `http://<address>.onion`, what `onion/onion.sh env` prints. `run.sh` sets it. |
 | `DIRECTORY_BACKEND` | The directory backend to proxy `/api` to, as a port or an origin. `127.0.0.1:5180` without one. It has to be serving a seed already. |
 | `DIRECTORY_PORT` | Where `run.sh` starts a directory server when `DIRECTORY_BACKEND` is not set; `5180`. |
+| `DIRECTORY_URL` | A manifest URL for the worker to ask outright, as `VITE_DIRECTORY_URL`: a published directory on another origin. Nothing is started or proxied for it. |
 | `BRIDGE_URL`, `BRIDGE_FINGERPRINT` | A Snowflake bridge instead of the public one, both or neither; `scripts/local-bridge/bridge.sh env` in `webtor-rs` prints them. The bootstrap is seeded either way, so the bridge only has to carry the first hop. |
 | `CHROME_PATH` | The Chrome-family binary. Without it the usual places on Linux and macOS are tried. |
 | `CONTAINER_ENGINE` | `docker` or `podman`; otherwise the first that answers `info`. |

@@ -30,6 +30,10 @@
 //                       would fall back to a Tor download if it asked in that
 //                       window — a path that also works, but not the one this
 //                       suite is here to drive.
+//   DIRECTORY_URL       a manifest URL for the worker to ask instead, passed
+//                       through as VITE_DIRECTORY_URL: a published directory
+//                       on another origin, say. DIRECTORY_BACKEND is then
+//                       not consulted.
 //   BRIDGE_URL          a bridge instead of the public one, with
 //   BRIDGE_FINGERPRINT  its identity; both or neither. Without one the worker
 //                       bootstraps across the public Snowflake bridge.
@@ -61,6 +65,8 @@ const DIRECTORY_BACKEND = process.env.DIRECTORY_BACKEND ?? '5180';
 const DIRECTORY_BACKEND_ORIGIN = /^\d+$/.test(DIRECTORY_BACKEND)
   ? `http://127.0.0.1:${DIRECTORY_BACKEND}`
   : DIRECTORY_BACKEND;
+/** The manifest the worker asks: the proxied backend's, or the one named outright. */
+const DIRECTORY_URL = process.env.DIRECTORY_URL || `${DIRECTORY_BACKEND_ORIGIN}/api/directory`;
 /** Any name under `.localhost` does; the browser resolves them all to loopback. */
 const GATEWAY_HOST = 'intor.localhost';
 
@@ -139,16 +145,15 @@ async function waitForListening(child: ChildProcess, url: string, deadlineMs: nu
   }
 }
 
-/** Fail early, and say why, unless the directory backend is serving a seed. */
+/** Fail early, and say why, unless the directory manifest is answering with a seed. */
 async function checkBackend(): Promise<void> {
-  const url = `${DIRECTORY_BACKEND_ORIGIN}/api/directory`;
-  const status = await fetch(url)
+  const status = await fetch(DIRECTORY_URL)
     .then((response) => String(response.status))
     .catch((error: unknown) => (error instanceof Error ? error.message : String(error)));
   assert.equal(
     status,
     '200',
-    `${url} answered ${status}. Start a directory backend there and let it build a seed, or set DIRECTORY_BACKEND.`,
+    `${DIRECTORY_URL} answered ${status}. Start a directory backend there and let it build a seed, or set DIRECTORY_BACKEND or DIRECTORY_URL.`,
   );
 }
 
@@ -162,6 +167,7 @@ async function startVite(port: number, backend: string): Promise<ChildProcess> {
   const vite = path.join(GATEWAY, 'node_modules', '.bin', 'vite');
   assert.ok(existsSync(vite), `${vite} is missing; run bun install in ${GATEWAY}`);
   const env: NodeJS.ProcessEnv = { ...process.env, GATEWAY_DEV_BACKEND: backend };
+  if (process.env.DIRECTORY_URL) env.VITE_DIRECTORY_URL = process.env.DIRECTORY_URL;
   if (BRIDGE_URL && BRIDGE_FINGERPRINT) {
     env.VITE_BRIDGE_URL = BRIDGE_URL;
     env.VITE_BRIDGE_FINGERPRINT = BRIDGE_FINGERPRINT;
