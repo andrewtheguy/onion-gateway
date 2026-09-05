@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { directoryUrl, loadDirectory } from './directory';
+import { directoryUrl, loadDirectory, MAX_SEED_BYTES } from './directory';
 
 const MANIFEST = {
   url: '/api/directory/20260904T180000Z-0123456789abcdef.json',
@@ -66,6 +66,56 @@ describe('loading a directory', () => {
     expect(loaded.seedUrl).toBe('https://cdn.example/seeds/x.json');
   });
 
+  it('inflates a seed whose URL ends in .gz', async () => {
+    const encoded = '{"version":3,"consensus":"' + 'x'.repeat(10_000) + '"}';
+    const { fetchFn } = fakeFetch({
+      'http://gw/api/directory.json': () =>
+        Response.json({
+          ...MANIFEST,
+          url: '/api/directory/20260904T180000Z-0123456789abcdef.json.gz',
+          bytes: Buffer.byteLength(encoded),
+        }),
+      'http://gw/api/directory/20260904T180000Z-0123456789abcdef.json.gz': () =>
+        new Response(Bun.gzipSync(Buffer.from(encoded)), { headers: { 'content-type': 'application/gzip' } }),
+    });
+    const loaded = await loadDirectory('http://gw/api/directory.json', fetchFn);
+    expect(loaded.seed).toBe(encoded);
+    expect(loaded.seedUrl).toBe('http://gw/api/directory/20260904T180000Z-0123456789abcdef.json.gz');
+  });
+
+  it('fails on a seed that runs past the size its manifest gives', async () => {
+    const encoded = '{"version":3,"consensus":"' + 'x'.repeat(100_000) + '"}';
+    const gzipped = Bun.gzipSync(Buffer.from(encoded));
+    const { fetchFn } = fakeFetch({
+      'http://gw/api/directory.json': () =>
+        Response.json({ ...MANIFEST, url: '/api/directory/x.json.gz', bytes: 1000 }),
+      'http://gw/api/directory/x.json.gz': () => new Response(gzipped),
+      'http://gw/api/directory': () => Response.json({ ...MANIFEST, url: '/api/directory/x.json', bytes: 1000 }),
+      'http://gw/api/directory/x.json': () => new Response(encoded),
+    });
+    await expect(loadDirectory('http://gw/api/directory.json', fetchFn)).rejects.toThrow('over its 1000 bytes');
+    await expect(loadDirectory('http://gw/api/directory', fetchFn)).rejects.toThrow('over its 1000 bytes');
+  });
+
+  it('takes a seed exactly as large as its manifest says', async () => {
+    const { fetchFn } = fakeFetch({
+      'http://gw/api/directory': () => Response.json(MANIFEST),
+      'http://gw/api/directory/20260904T180000Z-0123456789abcdef.json': () =>
+        new Response('{"version":3}'),
+    });
+    expect(Buffer.byteLength('{"version":3}')).toBe(MANIFEST.bytes);
+    expect((await loadDirectory('http://gw/api/directory', fetchFn)).seed).toBe('{"version":3}');
+  });
+
+  it('rejects a manifest whose size is not a plausible seed size', async () => {
+    for (const bytes of [0, -1, 1.5, MAX_SEED_BYTES + 1]) {
+      const { fetchFn } = fakeFetch({
+        'http://gw/api/directory': () => Response.json({ ...MANIFEST, bytes }),
+      });
+      await expect(loadDirectory('http://gw/api/directory', fetchFn)).rejects.toThrow('malformed');
+    }
+  });
+
   it('fails when the backend has nothing yet', async () => {
     const { fetchFn } = fakeFetch({
       'http://gw/api/directory': () =>
@@ -83,7 +133,7 @@ describe('loading a directory', () => {
     );
 
     const notASeed = fakeFetch({
-      'http://gw/api/directory': () => Response.json(MANIFEST),
+      'http://gw/api/directory': () => Response.json({ ...MANIFEST, bytes: 100 }),
       'http://gw/api/directory/20260904T180000Z-0123456789abcdef.json': () =>
         new Response('<html>login</html>'),
     });

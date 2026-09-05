@@ -1,2 +1,7 @@
 /node_modules/
 /directory/
+/site/
+/.wrangler/
+/.env
+/.env.*
+!/.env.example
