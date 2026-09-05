@@ -19,7 +19,7 @@ import init, { WebtorClient } from '@andrewtheguy/webtor-wasm';
 import webtorWasmUrl from '@andrewtheguy/webtor-wasm/webtor_wasm_bg.wasm?url';
 import { cookieJar } from './cookies';
 import { directoryUrl, loadDirectory } from './directory';
-import { gatewayUrl, isOnionHost, parseGatewayHost } from './gateway-host';
+import { gatewayHosts, isOnionHost, subdomainForm } from './gateway-host';
 import { bootstrapPage, errorPage } from './gateway-pages';
 import { WEBSOCKET_SHIM_PATH, scriptNonce, shimTag, withShim } from './html-shim';
 import type {
@@ -138,8 +138,11 @@ if (Boolean(BRIDGE_URL) !== Boolean(BRIDGE_FINGERPRINT)) {
   throw new Error('Set VITE_BRIDGE_URL and VITE_BRIDGE_FINGERPRINT together, or neither');
 }
 
+/** Which subdomain each onion has under the root; see gateway-host.ts. */
+const hosts = gatewayHosts(subdomainForm(import.meta.env.VITE_BARE_ONION_SUBDOMAIN));
+
 const here = new URL(self.location.href);
-const gateway = parseGatewayHost(here.hostname);
+const gateway = hosts.parse(here.hostname);
 /** The gateway's own host with its port, which is what onion URLs map onto. */
 const rootHost = gateway && `${gateway.root}${here.port ? `:${here.port}` : ''}`;
 
@@ -305,7 +308,7 @@ function rewriteLocation(location: string, target: string): string {
   }
   if (resolved.protocol !== 'http:' || !isOnionHost(resolved.hostname)) return location;
   if (resolved.port !== '' && resolved.port !== '80') return location;
-  return gatewayUrl(
+  return hosts.url(
     resolved.hostname,
     rootHost,
     `${resolved.pathname}${resolved.search}${resolved.hash}`,

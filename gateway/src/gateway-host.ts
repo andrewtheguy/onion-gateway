@@ -5,16 +5,37 @@
 // (`intor.localhost:5173`, say). The browser then does the isolation — each
 // site's cookies, storage and service worker are its own, exactly as a
 // subdomain gateway for IPFS keeps one CID's content from another's.
+//
+// A deployment may drop the `.onion` label and put the address straight
+// under the root, `http://<address>.<root>`: one label under the root is
+// what a single wildcard certificate or DNS record, `*.<root>`, covers,
+// where `<address>.onion.<root>` needs one for `*.onion.<root>`.
 
 /** The service's own name, `<56 base32 characters>.onion`. */
 export type OnionHost = string;
 
 const ONION_HOST = /^[a-z2-7]{56}\.onion$/;
-const GATEWAY_HOST = /^([a-z2-7]{56}\.onion)\.(.+)$/;
 
 /** Whether `host` names a v3 onion service. Lowercase only, as on the wire. */
 export function isOnionHost(host: string): host is OnionHost {
   return ONION_HOST.test(host);
+}
+
+/**
+ * Which subdomain an onion gets under the root: `<address>.onion.<root>`,
+ * or `<address>.<root>` with the `.onion` label left out.
+ */
+export type SubdomainForm = 'address.onion' | 'address';
+
+/**
+ * The form `VITE_BARE_ONION_SUBDOMAIN` asks for: unset or `false` keeps the
+ * `.onion` label, `true` leaves it out. Anything else is a mistake, not a
+ * default, and is refused.
+ */
+export function subdomainForm(bare: string | undefined): SubdomainForm {
+  if (bare === undefined || bare === '' || bare === 'false') return 'address.onion';
+  if (bare === 'true') return 'address';
+  throw new Error(`VITE_BARE_ONION_SUBDOMAIN must be true or false, not ${JSON.stringify(bare)}`);
 }
 
 export interface GatewayHost {
@@ -23,18 +44,37 @@ export interface GatewayHost {
   root: string;
 }
 
-/** Take `<onion>.<root>` apart, or `null` for any other hostname. */
-export function parseGatewayHost(hostname: string): GatewayHost | null {
-  const match = GATEWAY_HOST.exec(hostname.toLowerCase());
-  return match ? { onion: match[1], root: match[2] } : null;
+/** The hostnames of one gateway, in the one form it is built for. */
+export interface GatewayHosts {
+  readonly form: SubdomainForm;
+  /** Take `<onion>.<root>` apart, or `null` for any other hostname. */
+  parse(hostname: string): GatewayHost | null;
+  /**
+   * The gateway URL for a path on an onion, where `rootHost` is the
+   * gateway's own host with its port (`location.host` on the landing page).
+   */
+  url(onion: OnionHost, rootHost: string, pathAndQuery?: string): string;
 }
 
-/**
- * The gateway URL for a path on an onion, where `rootHost` is the gateway's
- * own host with its port (`location.host` on the landing page).
- */
-export function gatewayUrl(onion: OnionHost, rootHost: string, pathAndQuery = '/'): string {
-  return `http://${onion}.${rootHost}${pathAndQuery}`;
+const ONION_LABEL = '.onion';
+const ADDRESS_ONION_HOST = /^([a-z2-7]{56}\.onion)\.(.+)$/;
+const ADDRESS_HOST = /^([a-z2-7]{56})\.(.+)$/;
+
+export function gatewayHosts(form: SubdomainForm): GatewayHosts {
+  const bare = form === 'address';
+  const pattern = bare ? ADDRESS_HOST : ADDRESS_ONION_HOST;
+  return {
+    form,
+    parse(hostname) {
+      const match = pattern.exec(hostname.toLowerCase());
+      if (!match) return null;
+      return { onion: bare ? `${match[1]}${ONION_LABEL}` : match[1], root: match[2] };
+    },
+    url(onion, rootHost, pathAndQuery = '/') {
+      const label = bare ? onion.slice(0, -ONION_LABEL.length) : onion;
+      return `http://${label}.${rootHost}${pathAndQuery}`;
+    },
+  };
 }
 
 export interface OnionLocation {

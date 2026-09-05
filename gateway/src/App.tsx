@@ -1,18 +1,21 @@
 import { useEffect, useState } from 'react';
 import {
-  gatewayUrl,
+  gatewayHosts,
   isOnionHost,
-  parseGatewayHost,
   parseOnionInput,
+  subdomainForm,
   type GatewayHost,
 } from './gateway-host';
 import { installGateway, type Install } from './install';
+
+/** Which subdomain each onion has under the root; see gateway-host.ts. */
+const hosts = gatewayHosts(subdomainForm(import.meta.env.VITE_BARE_ONION_SUBDOMAIN));
 
 /** What `/<address>.onion/path` on the root host means: that path, on that onion's origin. */
 function pathStyleTarget(location: Location): string | null {
   const [, first = '', ...rest] = location.pathname.split('/');
   if (!isOnionHost(first)) return null;
-  return gatewayUrl(
+  return hosts.url(
     first,
     location.host,
     `/${rest.join('/')}${location.search}${location.hash}`,
@@ -33,7 +36,7 @@ function Landing() {
   }, []);
 
   const open = () => {
-    if (parsed) location.href = gatewayUrl(parsed.onion, rootHost, parsed.pathAndQuery);
+    if (parsed) location.href = hosts.url(parsed.onion, rootHost, parsed.pathAndQuery);
   };
 
   return (
@@ -87,8 +90,8 @@ function Landing() {
           <p className="result-label">Where it goes</p>
           <code>
             {parsed
-              ? gatewayUrl(parsed.onion, rootHost, parsed.pathAndQuery)
-              : gatewayUrl('<address>.onion', rootHost)}
+              ? hosts.url(parsed.onion, rootHost, parsed.pathAndQuery)
+              : hosts.url('<address>.onion', rootHost)}
           </code>
           <p className="hint">
             The first visit to an onion installs the gateway on that origin and
@@ -157,6 +160,6 @@ function Installing({ gateway }: { gateway: GatewayHost }) {
 }
 
 export default function App() {
-  const gateway = parseGatewayHost(location.hostname);
+  const gateway = hosts.parse(location.hostname);
   return gateway ? <Installing gateway={gateway} /> : <Landing />;
 }

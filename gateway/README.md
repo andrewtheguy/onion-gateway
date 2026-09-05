@@ -22,6 +22,14 @@ origin is `<address>.onion.` prefixed to whatever host that is. Chrome and
 Firefox resolve every `*.localhost` name to the loopback address and treat it
 as a secure context, which is what a service worker needs.
 
+A build with `VITE_BARE_ONION_SUBDOMAIN=true` leaves the `.onion` label out
+and puts the address straight under the gateway's host,
+`http://<address>.intor.localhost:5173/some/path`. That is one label under the
+root, which a single wildcard certificate or DNS record, `*.<root>`, covers,
+where the default form needs one for `*.onion.<root>`. A gateway is built for
+one form or the other and answers hostnames of that form only; pasted
+addresses and redirects are sent to it either way.
+
 ## Run it
 
 The Tor client comes as `@andrewtheguy/webtor-wasm`, pinned in `package.json`
@@ -57,7 +65,9 @@ backend the worker says so and downloads the directory over Tor instead.
 server that falls back to `index.html` for unknown paths hosts it, with the
 directory endpoints behind `/api/directory` on the same host or wherever
 `VITE_DIRECTORY_URL` points; the directory servers in this repository can
-serve the `dist/` themselves with `--web-root`. As in the
+serve the `dist/` themselves with `--web-root`. `VITE_BARE_ONION_SUBDOMAIN=true`
+builds a gateway whose onion origins are `<address>.<root>` rather than
+`<address>.onion.<root>`, for a host with a wildcard one label deep. As in the
 `webtor-rs` examples, `VITE_BRIDGE_URL` and `VITE_BRIDGE_FINGERPRINT` in
 `.env.local` point the client at a bridge of your own, such as the
 `scripts/local-bridge` container in `webtor-rs`.
