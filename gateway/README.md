@@ -136,7 +136,9 @@ GET /api/directory/<name>.json
   the client revalidates against the pinned directory authorities before it
   installs any of it. Its name is unique to its bytes, so the response is
   `immutable` with a `max-age` running to `validUntil`, and gzip when the
-  request accepts it, which roughly halves the forty megabytes.
+  request accepts it, which roughly halves the forty megabytes. A `url`
+  ending in `.gz` is the seed gzipped outright, as a host that serves files
+  as they are and caps their size publishes it; the worker inflates it.
 - **CORS.** Both answer with `Access-Control-Allow-Origin: *`. The worker
   asking is on an onion's origin, not the gateway's.
 - **Freshness** is the backend's job. A consensus is published every hour and

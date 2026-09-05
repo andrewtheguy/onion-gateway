@@ -66,6 +66,19 @@ describe('loading a directory', () => {
     expect(loaded.seedUrl).toBe('https://cdn.example/seeds/x.json');
   });
 
+  it('inflates a seed whose URL ends in .gz', async () => {
+    const encoded = '{"version":3,"consensus":"' + 'x'.repeat(10_000) + '"}';
+    const { fetchFn } = fakeFetch({
+      'http://gw/api/directory.json': () =>
+        Response.json({ ...MANIFEST, url: '/api/directory/20260904T180000Z-0123456789abcdef.json.gz' }),
+      'http://gw/api/directory/20260904T180000Z-0123456789abcdef.json.gz': () =>
+        new Response(Bun.gzipSync(Buffer.from(encoded)), { headers: { 'content-type': 'application/gzip' } }),
+    });
+    const loaded = await loadDirectory('http://gw/api/directory.json', fetchFn);
+    expect(loaded.seed).toBe(encoded);
+    expect(loaded.seedUrl).toBe('http://gw/api/directory/20260904T180000Z-0123456789abcdef.json.gz');
+  });
+
   it('fails when the backend has nothing yet', async () => {
     const { fetchFn } = fakeFetch({
       'http://gw/api/directory': () =>

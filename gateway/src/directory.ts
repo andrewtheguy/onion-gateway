@@ -9,7 +9,9 @@
 // describes under "The directory endpoints".
 //
 //   GET <manifest URL>          {"url", "validAfter", "freshUntil", "validUntil", "bytes", "relays"}
-//   GET <manifest.url>          the seed, as `directorySeed` takes it; immutable, uniquely named
+//   GET <manifest.url>          the seed, as `directorySeed` takes it; immutable, uniquely named.
+//                               A `url` ending in `.gz` is the seed gzipped, from a host that
+//                               serves files as they are and caps their size; it is inflated here.
 //
 // Both answer with `Access-Control-Allow-Origin: *`, since the worker asking
 // is on an onion's origin, not the gateway's.
@@ -80,11 +82,18 @@ export async function loadDirectory(
   if (!seedResponse.ok) {
     throw new Error(`the directory seed answered HTTP ${seedResponse.status}`);
   }
-  const seed = await seedResponse.text();
+  const seed = await seedText(seedResponse, new URL(seedUrl).pathname.endsWith('.gz'));
   if (!seed.startsWith('{"version":')) {
     throw new Error('the directory seed is not one');
   }
   return { seed, manifest, seedUrl };
+}
+
+/** The seed as text: the body, inflated first when the URL said it is gzipped. */
+async function seedText(response: Response, gzipped: boolean): Promise<string> {
+  if (!gzipped) return response.text();
+  if (!response.body) throw new Error('the directory seed has no body');
+  return new Response(response.body.pipeThrough(new DecompressionStream('gzip'))).text();
 }
 
 function asManifest(value: unknown): DirectoryManifest {
