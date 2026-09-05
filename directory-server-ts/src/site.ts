@@ -15,7 +15,9 @@
 //
 // The seed a previous manifest named is kept for one more publish, as the
 // store does: a worker that read the old manifest a moment ago is still
-// fetching it.
+// fetching it. A seed older than the one the manifest names is refused, so a
+// publish that ran long cannot put back what a later one replaced; and
+// `withSiteLock` keeps two publishes from laying out and deploying at once.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -66,14 +68,65 @@ export async function readSiteManifest(site: string): Promise<Manifest | null> {
 }
 
 /**
+ * Run `publish` holding the site's lock, so that one process lays out and
+ * deploys at a time. The lock is a file created exclusively, holding the
+ * owner's pid; one whose owner is gone is taken over. A second publish
+ * finding the lock held fails at once rather than waiting: the next hour's
+ * run is soon enough.
+ */
+export async function withSiteLock<T>(site: string, publish: () => Promise<T>): Promise<T> {
+  await fs.mkdir(site, { recursive: true });
+  const lock = path.join(site, '.lock');
+  for (;;) {
+    try {
+      await fs.writeFile(lock, String(process.pid), { flag: 'wx' });
+      break;
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
+    const owner = Number(await fs.readFile(lock, 'utf8').catch(() => ''));
+    if (owner && isRunning(owner)) {
+      throw new Error(`another publish (pid ${owner}) holds ${lock}`);
+    }
+    // The owner is gone. Renaming is atomic, so of several publishes that
+    // find the same stale lock exactly one takes it over; the rest try again.
+    const stale = `${lock}.${process.pid}.stale`;
+    try {
+      await fs.rename(lock, stale);
+      await fs.rm(stale, { force: true });
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
+  try {
+    return await publish();
+  } finally {
+    await fs.rm(lock, { force: true });
+  }
+}
+
+function isRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error: unknown) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+/**
  * Lay `seed` out as the site's current one: its gzipped form, the manifest
  * naming it, the headers file, and no seed but it and the one the manifest
- * named before. Returns the manifest and the published size.
+ * named before. Returns the manifest and the published size. Throws when
+ * the manifest already names a newer seed.
  */
 export async function writeSite(site: string, seed: Seed): Promise<{ manifest: Manifest; gzipBytes: number }> {
   const seeds = path.join(site, SEED_URL_PREFIX);
   await fs.mkdir(seeds, { recursive: true });
   const previous = await readSiteManifest(site);
+  if (previous && new Date(previous.validAfter) > seed.validAfter) {
+    throw new Error(`${site} already has a newer seed, valid from ${previous.validAfter}`);
+  }
   const keep = new Set([seed.name, ...(previous ? [seedName(previous)] : [])]);
 
   const gzipped = Bun.gzipSync(Buffer.from(seed.encoded), { level: 9 });
@@ -82,8 +135,9 @@ export async function writeSite(site: string, seed: Seed): Promise<{ manifest: M
 
   const manifest = siteManifestFor(seed);
   const manifestPath = path.join(site, MANIFEST_PATH);
-  await fs.writeFile(`${manifestPath}.tmp`, JSON.stringify(manifest, null, 2));
-  await fs.rename(`${manifestPath}.tmp`, manifestPath);
+  const partial = `${manifestPath}.${process.pid}.tmp`;
+  await fs.writeFile(partial, JSON.stringify(manifest, null, 2));
+  await fs.rename(partial, manifestPath);
 
   for (const entry of await fs.readdir(seeds)) {
     const name = entry.replace(/\.json\.gz$/, '');
